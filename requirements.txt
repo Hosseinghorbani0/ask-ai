@@ -1,0 +1,5 @@
+openai>=1.0.0
+groq
+google-generativeai
+anthropic
+requests

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "easyai"
+version = "0.1.0"
+description = "AI Made Stupid Simple. Unified API for OpenAI, Groq, Google, and more."
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+  {name = "Hossein Ghorbani", email = "hosseingh1068@gmail.com"}
+]
+dependencies = [
+  "openai>=1.0.0",
+  "groq",
+  "google-generativeai",
+  "anthropic",
+  "requests"
+]
+
+[project.urls]
+"Homepage" = "https://hosseinghorbani0.ir/"
+"Bug Tracker" = "https://github.com/Hosseinghorbani0/easyai/issues"
