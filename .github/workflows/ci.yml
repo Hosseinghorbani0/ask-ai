@@ -32,5 +32,6 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
       run: |
-        # We skip actual API calls in CI/CD without keys, but run structural tests
-        pytest --ignore=examples/ --ignore=test_easyai.py
+        # Run unit tests in tests/ directory
+        pytest tests/
+
