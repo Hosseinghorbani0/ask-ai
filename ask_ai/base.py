@@ -82,8 +82,51 @@ class BaseProvider:
         # 3. Check for specific output_type override (e.g. user forced image)
         output_type = kwargs.get('output_type')
         
-        # 4. Call Provider Implementation
-        return self._send_request(messages, final_config, output_type)
+        # 4. Extract timeout and retry safely
+        timeout_val = kwargs.get('timeout', final_config.extra.get('timeout', 30))
+        retry_val = kwargs.get('retry', final_config.extra.get('retry', 0))
+        
+        timeout = float(timeout_val) if timeout_val is not None else 30.0
+        retry = int(retry_val) if retry_val is not None else 0
+        
+        final_config.extra['timeout'] = timeout # Pass down to providers
+
+        # 5. Execute with Retry Logic
+        attempts = 0
+        last_error = None
+        while attempts <= retry:
+            try:
+                return self._send_request(messages, final_config, output_type)
+            except Exception as e:
+                last_error = e
+                if self._is_retryable_error(e) and attempts < retry:
+                    attempts += 1
+                    delay = 2 ** attempts # 2s, 4s, 8s...
+                    print(f"[ask-ai] Transient error ({e.__class__.__name__}). Retrying in {delay}s... ({attempts}/{retry})")
+                    import time
+                    time.sleep(delay)
+                else:
+                    raise e
+                    
+        # Fallback if loop exits without returning
+        from .exceptions import AskAINetworkError
+        raise AskAINetworkError(f"Request failed after {retry} retries. Last error: {last_error}")
+
+    def _is_retryable_error(self, e: Exception) -> bool:
+        """Dynamically detect rate limits and network timeouts across different provider SDKs."""
+        err_str = str(e).lower()
+        err_cls = e.__class__.__name__.lower()
+        
+        # Explicit ask-ai errors
+        from .exceptions import AskAINetworkError, AskAIRateLimitError
+        if isinstance(e, (AskAINetworkError, AskAIRateLimitError)): return True
+        
+        # Heuristics for underlying provider SDKs (OpenAI, Anthropic, etc.)
+        if "ratelimit" in err_cls or "rate_limit" in err_cls or "429" in err_str: return True
+        if "timeout" in err_cls or "timeout" in err_str: return True
+        if "connection" in err_cls or "connecterror" in err_cls: return True
+        
+        return False
 
     def _merge_configs(self, global_conf: AdvancedConfig, req_conf: AdvancedConfig) -> AdvancedConfig:
         return global_conf.merge(req_conf) # We need to implement merge logic in AdvancedConfig properly or here

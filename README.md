@@ -13,99 +13,104 @@
 </p>
 
 <p align="center">
-  <b>AI Made Simple.</b><br/>
-  One unified Python client for OpenAI, Claude, Gemini, Groq & more.
+  <b>A minimal Python SDK to switch between LLM providers in one line.</b><br/>
+  No frameworks. No servers. No overengineering.
 </p>
 
-> Stop rewriting AI code for every provider. Use one line. Switch models anytime.
-
+[![PyPI version](https://img.shields.io/pypi/v/askai-python.svg)](https://pypi.org/project/askai-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 ---
 
-## ⚡ Why ask-ai?
-
-- **No SDK lock-in**: Don't learn 5 different libraries. Learn one.
-- **Unified API**: `ai.ask()` works for text, images, and audio across all providers.
-- **Production Ready**: Built-in type safety, error handling, and environment management.
-- **Zero-Config**: Auto-detects API keys from your environment.
-
----
-
-## 🚀 The Golden Example
-
-See the power of `ask-ai` in 3 lines of code:
-
-```python
-from ask_ai import OpenAI, Anthropic, Google
-
-prompt = "Explain quantum computing in one sentence."
-
-# Switch providers instantly
-print("OpenAI:   ", OpenAI().ask(prompt))
-print("Claude:   ", Anthropic().ask(prompt))
-print("Gemini:   ", Google().ask(prompt))
-```
-
----
-
-## 📦 Installation
+## ⚡ Quick Start (5 seconds)
 
 ```bash
 pip install askai-python
 ```
 
+```python
+from ask_ai import OpenAI, Groq
+
+# Auto-detects OPENAI_API_KEY from environment
+OpenAI().ask("Explain black holes like I'm 5").text
+
+# Switch provider effortlessly
+Groq().ask("Explain black holes like I'm 5").text
+```
+
 ---
 
-## 📖 Quick Start
+## 🧐 Why ask-ai?
 
-### 1. Setup
-Export your API keys (or pass them explicitly).
-```bash
-export OPENAI_API_KEY="sk-..."
-export ANTHROPIC_API_KEY="sk-ant-..."
-```
+- **One function**: Just call `.ask()`
+- **Multiple providers**: OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter
+- **Zero config**: Keys are pulled from the environment automatically
+- **SDK-first, not a framework**: It stays out of your way.
 
-### 2. Standard Usage
+## ⚖️ How it compares
+
+| Feature        | ask-ai | LangChain |
+| -------------- | ------ | --------- |
+| Setup time     | 30 sec | 1 hour    |
+| Learning curve | ⭐      | ⭐⭐⭐⭐⭐     |
+| Async support  | ⏳ *(Coming soon)* | ⚠️ Complex |
+| Retry/Timeout  | ✅ Built-in | ❌ Manual |
+| Gateway needed | ❌ No      | ❌ No      |
+| Lines to switch| **1**      | 20+       |
+
+## 🚫 What this project is NOT
+
+> ❌ Not an AI framework  
+> ❌ Not an API gateway  
+> ❌ Not an agent memory system  
+
+It does one thing perfectly: **Simplifying the API call to LLMs.**
+
+---
+
+## 🛠️ Advanced Usage
+
+### Built-in Retries & Timeout (Resiliency)
+Handle rate limits (`429`) and network drops automatically:
+
 ```python
 from ask_ai import OpenAI
-
 ai = OpenAI()
-print(ai.ask("Hello, World!"))
+
+# Will retry up to 3 times on RateLimit/Network errors, with generic timeout
+response = ai.ask("Write a script", retry=3, timeout=10)
 ```
 
-### 3. Advanced Usage
-Control `temperature`, `top_p`, and system personas for professional results.
+### System Configuration 
+Set system prompts and temperature directly:
+
 ```python
 ai.advanced(
     temperature=0.7,
     prompt="You are a senior DevOps engineer."
 )
 
-print(ai.ask("How do I optimize a Dockerfile?"))
+print(ai.ask("How do I optimize a Dockerfile?").text)
 ```
 
 ---
 
-## 🔌 Supported Providers
+## 🗺️ Roadmap
 
-| Provider | Class | Feature Set |
-|----------|-------|-------------|
-| **OpenAI** | `OpenAI` | All Models (GPT-4o, o1, etc.) |
-| **Anthropic** | `Anthropic` | All Models (Claude 3.5, Opus) |
-| **Google** | `Google` | All Models (Gemini 1.5 Pro/Flash) |
-| **Groq** | `Groq` | All Models (Llama 3, Mixtral) |
-| **Azure** | `Azure` | All Deployments |
-| **OpenRouter**| `OpenRouter`| All Models (100+) |
-
----
-
-## ⭐ Support the Project
-
-If this project saved you time, please consider giving it a star on GitHub! It helps us grow.
-
-**[Give it a Star!](https://github.com/Hosseinghorbani0/ask-ai)**
+- [x] OpenAI, Groq, Gemini, Anthropic, Azure, OpenRouter support
+- [x] Text to Image (DALL-E) and Text to Audio
+- [x] Automated Retry & Timeout controls
+- [ ] Async Support (`await ask_async`)
+- [ ] Provider Fallback (`ask(..., providers=[OpenAI, Groq])`)
+- [ ] Streaming Support (`ask_stream`)
+- [ ] Structured Output (Pydantic Support)
 
 ---
-*Built by [Hossein Ghorbani](https://hosseinghorbani0.ir/) | [GitHub](https://github.com/Hosseinghorbani0).*
+
+## 🔗 Important Links
+
+- **PyPI**: [askai-python](https://pypi.org/project/askai-python/)
+- **GitHub Repository**: [Hosseinghorbani0/ask-ai](https://github.com/Hosseinghorbani0/ask-ai) (Star us! ⭐)
+- **Official Website**: [hosseinghorbani0.ir](https://hosseinghorbani0.ir/)
+- **Bug Tracker**: [Report an Issue](https://github.com/Hosseinghorbani0/ask-ai/issues)

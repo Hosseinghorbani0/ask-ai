@@ -1,6 +1,7 @@
 # askai-python 🚀
 
-**AI Made Stupid Simple.** One unified Python client for OpenAI, Claude, Gemini, Groq, and Azure.
+**A minimal Python SDK to switch between LLM providers in one line.**  
+No frameworks. No servers. No overengineering.
 
 [![PyPI version](https://img.shields.io/pypi/v/askai-python.svg)](https://pypi.org/project/askai-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -8,90 +9,67 @@
 
 ---
 
-## ⚡ What is askai-python?
-
-`askai-python` is a lightweight, zero-dependency-logic wrapper that provides a **single API** for all major AI providers. Stop learning multiple SDKs; just call `.ask()` and get your answer.
-
-- **Unified Interface**: One syntax for OpenAI, Anthropic, Google, and more.
-- **Zero-Config**: Seamlessly uses environment variables for API keys.
-- **Smart Media**: Easy handling of images and audio (Provider permitting).
-- **Production Grade**: Built-in robust error handling and type hints.
-
----
-
-## 📦 Installation
+## ⚡ Quick Start (5 seconds)
 
 ```bash
 pip install askai-python
 ```
 
+```python
+from ask_ai import OpenAI, Groq
+
+# Auto-detects OPENAI_API_KEY from environment
+print(OpenAI().ask("Explain black holes like I'm 5").text)
+
+# Switch provider instantly
+print(Groq().ask("Explain black holes like I'm 5").text)
+```
+
 ---
 
-## 🚀 Examples & Tutorials
+## 🧐 Why ask-ai?
 
-### 1. Basic Usage (The 3-Line Magic)
-```python
-from ask_ai import OpenAI
+- **One function**: Just call `.ask()`
+- **Multiple providers**: OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter
+- **Zero config**: Keys are pulled from the environment automatically
+- **SDK-first, not a framework**: It stays out of your way.
 
-ai = OpenAI() # Auto-loads OPENAI_API_KEY from env
-print(ai.ask("What is the capital of France?").text)
-```
+## ⚖️ How it compares
 
-### 2. Multi-Provider Mastery
-Switching between top-tier models has never been easier:
+| Feature        | ask-ai | LangChain |
+| -------------- | ------ | --------- |
+| Setup time     | 30 sec | 1 hour    |
+| Learning curve | ⭐      | ⭐⭐⭐⭐⭐     |
+| Async support  | ⏳ *(Coming soon)* | ⚠️ Complex |
+| Retry/Timeout  | ✅ Built-in | ❌ Manual |
+| Gateway needed | ❌ No      | ❌ No      |
 
-```python
-from ask_ai import OpenAI, Anthropic, Google
+## 🚫 What this project is NOT
 
-prompt = "Explain quantum computing to a 5-year-old."
+> ❌ Not an AI framework  
+> ❌ Not an API gateway  
+> ❌ Not an agent memory system  
 
-# OpenAI (GPT-4o)
-print(OpenAI().ask(prompt).text)
+It does one thing perfectly: **Simplifying the API call to LLMs.**
 
-# Anthropic (Claude 3.5 Sonnet)
-print(Anthropic().ask(prompt).text)
+---
 
-# Google (Gemini 1.5 Pro)
-print(Google().ask(prompt).text)
-```
+## 🚀 Built-in Resiliency (Retries & Timeouts)
 
-### 3. Advanced Configuration (System Personas)
-You can set a system prompt and temperature globally for an instance or per-request.
+Build reliable apps without writing your own loops. `askai-python` handles rate limits (`429`) and network drops via an internal exponential backoff.
 
 ```python
 from ask_ai import OpenAI
 
 ai = OpenAI()
 
-# Global config
-ai.advanced(
-    prompt="You are a sarcastic robot from the year 3000.",
-    temperature=0.9
+# Automatically retries up to 3 times on transient errors, with a 15-second timeout
+response = ai.ask(
+    "Write a complex python script", 
+    retry=3, 
+    timeout=15 
 )
-
-print(ai.ask("What is love?").text)
-
-# Per-request override
-print(ai.ask("What is 1+1?", temperature=0.1).text)
 ```
-
-### 4. Handling Structured Exceptions
-Build reliable apps by catching specific AI errors:
-
-```python
-from ask_ai import OpenAI
-from ask_ai.exceptions import AskAIError, APIKeyError
-
-try:
-    ai = OpenAI(api_key="invalid-key")
-    ai.ask("Hello")
-except APIKeyError:
-    print("Check your API keys!")
-except AskAIError as e:
-    print(f"An AI error occurred: {e}")
-```
-
----
 
 ## 🔌 Supported Providers
 
@@ -106,11 +84,18 @@ except AskAIError as e:
 
 ---
 
+## 🗺️ Roadmap
+
+- [x] Baseline multiple providers
+- [x] Automated Retry & Timeout controls
+- [ ] Async API (`await ask_async`)
+- [ ] Provider Fallback (`fallback=[Groq()]`)
+- [ ] Structured Outputs (Pydantic Support)
+
+---
+
 ## 🔗 Important Links
 
 - **GitHub Repository**: [Hosseinghorbani0/ask-ai](https://github.com/Hosseinghorbani0/ask-ai) (Star us! ⭐)
 - **Official Website**: [hosseinghorbani0.ir](https://hosseinghorbani0.ir/)
 - **Bug Tracker**: [Report an Issue](https://github.com/Hosseinghorbani0/ask-ai/issues)
-
----
-*Built with ❤️ by [Hossein Ghorbani](https://github.com/Hosseinghorbani0).*

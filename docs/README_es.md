@@ -1,4 +1,4 @@
-# askai-python
+# askai-python 🚀
 
 <p align="center">
   🌍 <b>Readme:</b>
@@ -12,101 +12,92 @@
   <a href="README_ja.md"><img src="https://flagcdn.com/20x15/jp.png" alt="Japanese"> 日本語</a>
 </p>
 
-# 🚀 askai-python
+<p align="center">
+  <b>Un SDK de Python minimalista para cambiar entre proveedores de LLM en una sola línea.</b><br/>
+  Sin frameworks. Sin servidores. Sin ingeniería excesiva.
+</p>
 
-**IA Simplificada.**
-Conéctate a OpenAI, Groq, Google, Anthropic y más con una sola línea de código.
-
-> Deja de reescribir código de IA para cada proveedor. Usa una línea. Cambia de modelo en cualquier momento.
-
+[![PyPI version](https://img.shields.io/pypi/v/askai-python.svg)](https://pypi.org/project/askai-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 ---
 
-## ⚡ ¿Por qué askai-python?
-
-- **Sin bloqueo de SDK**: No aprendas 5 bibliotecas diferentes. Aprende una.
-- **API Unificada**: `ai.ask()` funciona para texto, imágenes y audio en todos los proveedores.
-- **Listo para Producción**: Seguridad de tipos integrada, manejo de errores y gestión de entornos.
-- **Cero Configuración**: Detecta automáticamente claves API de tu entorno.
-
----
-
-## 🚀 El Ejemplo Dorado (The Golden Example)
-
-Mira el poder de `askai-python` en 3 líneas de código:
-
-```python
-from ask_ai import OpenAI, Anthropic, Google
-
-prompt = "Explica la computación cuántica en una frase."
-
-# Cambia proveedores al instante
-print("OpenAI:   ", OpenAI().ask(prompt))
-print("Claude:   ", Anthropic().ask(prompt))
-print("Gemini:   ", Google().ask(prompt))
-```
-
----
-
-## 📦 Instalación
+## ⚡ Inicio Rápido (5 segundos)
 
 ```bash
 pip install askai-python
 ```
 
+```python
+from ask_ai import OpenAI, Groq
+
+# Detecta automáticamente OPENAI_API_KEY desde el entorno
+OpenAI().ask("Explica los agujeros negros como si tuviera 5 años").text
+
+# Cambia de proveedor al instante
+Groq().ask("Explica los agujeros negros como si tuviera 5 años").text
+```
+
 ---
 
-## 📖 Guía de Inicio Rápido
+## 🧐 ¿Por qué ask-ai?
 
-### 1. Configuración
-Exporta tus claves API (o pásalas explícitamente).
-```bash
-export OPENAI_API_KEY="sk-..."
-export ANTHROPIC_API_KEY="sk-ant-..."
-```
+- **Una sola función**: Solo llama a `.ask()`
+- **Múltiples proveedores**: OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter
+- **Sin configuración**: Las claves se extraen del entorno automáticamente.
+- **SDK primero, no un framework**: No se interpone en tu camino.
 
-### 2. Uso Estándar
+## ⚖️ Cómo se compara
+
+| Característica | ask-ai | LangChain |
+| -------------- | ------ | --------- |
+| Tiempo de conf. | 30 seg | 1 hora |
+| Curva de aprend.| ⭐ | ⭐⭐⭐⭐⭐ |
+| Soporte Async | ⏳ *(Pronto)* | ⚠️ Complejo |
+| Reintentos | ✅ Integrado | ❌ Manual |
+| Requiere Gateway | ❌ No | ❌ No |
+| Líneas para cambiar| **1** | 20+ |
+
+## 🚫 Lo que este proyecto NO es
+
+> ❌ No es un framework de IA
+> ❌ No es un API gateway
+> ❌ No es un sistema de memoria para agentes
+
+Hace una sola cosa perfectamente: **Simplificar la llamada a las API de los LLMs.**
+
+---
+
+## 🛠️ Uso Avanzado
+
+### Resiliencia Integrada (Retries & Timeout)
+Maneja los límites de tasa (`429`) y caídas de red automáticamente:
+
 ```python
 from ask_ai import OpenAI
-
 ai = OpenAI()
-print(ai.ask("¡Hola Mundo!"))
+
+# Reintentará hasta 3 veces en errores de red, timeout por defecto de 10s
+response = ai.ask("Escribe un script de python complejo", retry=3, timeout=10)
 ```
 
-### 3. Uso Avanzado (Profesional)
-Controla `temperature`, `top_p` y personas del sistema (`prompt`) para resultados profesionales.
+### Configuración del Sistema
+Establece prompts del sistema y temperatura (temperature) directamente:
 
 ```python
 ai.advanced(
     temperature=0.7,
-    prompt="Eres un ingeniero DevOps senior."
+    prompt="Eres un ingeniero de DevOps senior."
 )
 
-print(ai.ask("¿Cómo optimizo un Dockerfile?"))
+print(ai.ask("¿Cómo optimizo un Dockerfile?").text)
 ```
 
 ---
 
-## 🔌 Proveedores Soportados
+## 🔗 Enlaces Importantes
 
-| Proveedor | Clase | Conjunto de Características |
-|----------|-------|-------------|
-| **OpenAI** | `OpenAI` | Todos los Modelos (GPT-4o, o1, etc.) |
-| **Anthropic** | `Anthropic` | Todos los Modelos (Claude 3.5, Opus) |
-| **Google** | `Google` | Todos los Modelos (Gemini 1.5 Pro/Flash) |
-| **Groq** | `Groq` | Todos los Modelos (Llama 3, Mixtral) |
-| **Azure** | `Azure` | Todos los Modelos (Enterprise) |
-| **OpenRouter**| `OpenRouter`| Todos los Modelos (100+) |
-
----
-
-## ⭐ Apoya el Proyecto
-
-Si este proyecto te ahorró tiempo, ¡por favor considera darle una estrella en GitHub! Nos ayuda a crecer.
-
-**[¡Dale una Estrella!](https://github.com/Hosseinghorbani0/askai-python)**
-
----
-*Construido por [Hossein Ghorbani](https://hosseinghorbani0.ir/) | [GitHub](https://github.com/Hosseinghorbani0).*
+- **Repositorio en GitHub**: [Hosseinghorbani0/ask-ai](https://github.com/Hosseinghorbani0/ask-ai) (¡Danos una estrella! ⭐)
+- **PyPI**: [askai-python](https://pypi.org/project/askai-python/)
+- **Sitio Web Oficial**: [hosseinghorbani0.ir](https://hosseinghorbani0.ir/)

@@ -1,4 +1,4 @@
-# askai-python
+# askai-python 🚀
 
 <p align="center">
   🌍 <b>Readme:</b>
@@ -12,71 +12,78 @@
   <a href="README_ja.md"><img src="https://flagcdn.com/20x15/jp.png" alt="Japanese"> 日本語</a>
 </p>
 
-# 🚀 askai-python
+<p align="center">
+  <b>LLM sağlayıcıları arasında tek satırda geçiş yapmak için minimal bir Python SDK'sı.</b><br/>
+  Framework yok. Sunucu yok. Aşırı mühendislik yok.
+</p>
 
-**Yapay Zeka Basitleştirildi.**
-OpenAI, Groq, Google, Anthropic ve daha fazlasına tek bir kod satırıyla bağlanın.
-
-> Her sağlayıcı için yapay zeka kodunu yeniden yazmayı bırakın. Tek satır kullanın. Modeller arasında istediğiniz zaman geçiş yapın.
-
+[![PyPI version](https://img.shields.io/pypi/v/askai-python.svg)](https://pypi.org/project/askai-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 ---
 
-## ⚡ Neden askai-python?
-
-- **SDK Kilidi Yok**: 5 farklı kütüphane öğrenmeyin. Bir tane öğrenin.
-- **Birleşik API**: `ai.ask()` tüm sağlayıcılarda metin, görüntü ve ses için çalışır.
-- **Üretime Hazır**: Yerleşik tip güvenliği, hata yönetimi ve ortam yönetimi.
-- **Sıfır Yapılandırma**: API anahtarlarını ortamınızdan otomatik olarak algılar.
-
----
-
-## 🚀 Altın Örnek (The Golden Example)
-
-`askai-python`nin gücünü 3 satır kodda görün:
-
-```python
-from ask_ai import OpenAI, Anthropic, Google
-
-prompt = "Kuantum hesaplamayı tek bir cümlede açıkla."
-
-# Sağlayıcıları anında değiştirin
-print("OpenAI:   ", OpenAI().ask(prompt))
-print("Claude:   ", Anthropic().ask(prompt))
-print("Gemini:   ", Google().ask(prompt))
-```
-
----
-
-## 📦 Kurulum
+## ⚡ Hızlı Başlangıç (5 saniye)
 
 ```bash
 pip install askai-python
 ```
 
+```python
+from ask_ai import OpenAI, Groq
+
+# Çevreden OPENAI_API_KEY'yi otomatik algılar
+OpenAI().ask("Bana kara delikleri 5 yaşındaymışım gibi anlat").text
+
+# Anında sağlayıcı değiştirin
+Groq().ask("Bana kara delikleri 5 yaşındaymışım gibi anlat").text
+```
+
 ---
 
-## 📖 Hızlı Başlangıç Rehberi
+## 🧐 Neden ask-ai?
 
-### 1. Kurulum
-API anahtarlarınızı dışa aktarın (veya açıkça iletin).
-```bash
-export OPENAI_API_KEY="sk-..."
-export ANTHROPIC_API_KEY="sk-ant-..."
-```
+- **Tek fonksiyon**: Sadece `.ask()` çağrısı yapın
+- **Çoklu sağlayıcı**: OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter
+- **Sıfır yapılandırma**: Anahtarlar otomatik olarak ortam değişkenlerinden çekilir.
+- **SDK öncelikli, framework değil**: Yolunuza çıkmaz.
 
-### 2. Standart Kullanım
+## ⚖️ Karşılaştırma
+
+| Özellik | ask-ai | LangChain |
+| -------------- | ------ | --------- |
+| Kurulum süresi | 30 saniye | 1 saat |
+| Öğrenme eğrisi | ⭐ | ⭐⭐⭐⭐⭐ |
+| Async desteği | ⏳ *(Çok yakında)* | ⚠️ Karmaşık |
+| Tekrar/Zaman Aşımı | ✅ Dahili | ❌ Manuel |
+| Ağ geçidi (Gateway) | ❌ Hayır | ❌ Hayır |
+| Sağlayıcı değişimi (satır) | **1** | 20+ |
+
+## 🚫 Bu proje ne DEĞİLDİR
+
+> ❌ Bir AI framework'ü değil
+> ❌ Bir API ağ geçidi değil
+> ❌ Bir ajan (agent) hafıza sistemi değil
+
+Sadece bir şeyi mükemmel yapar: **LLM'lere API çağrılarını basitleştirmek.**
+
+---
+
+## 🛠️ Gelişmiş Kullanım
+
+### Dahili Esneklik (Retries & Timeout)
+Sınır aşımlarını (`429`) ve ağ düşmelerini otomatik olarak yönetin:
+
 ```python
 from ask_ai import OpenAI
-
 ai = OpenAI()
-print(ai.ask("Merhaba Dünya!"))
+
+# Ağ hatalarında 3 defaya kadar tekrar dener, varsayılan zaman aşımı 10s
+response = ai.ask("Bir python scripti yaz", retry=3, timeout=10)
 ```
 
-### 3. Gelişmiş Kullanım (Profesyonel)
-Profesyonel sonuçlar için `temperature`, `top_p` ve sistem personalarını (`prompt`) kontrol edin.
+### Sistem Yapılandırması
+Sistem komutlarını ve sıcaklığı (temperature) doğrudan ayarlayın:
 
 ```python
 ai.advanced(
@@ -84,29 +91,13 @@ ai.advanced(
     prompt="Sen kıdemli bir DevOps mühendisisin."
 )
 
-print(ai.ask("Bir Dockerfile'ı nasıl optimize ederim?"))
+print(ai.ask("Bir Dockerfile'ı nasıl optimize ederim?").text)
 ```
 
 ---
 
-## 🔌 Desteklenen Sağlayıcılar
+## 🔗 Önemli Bağlantılar
 
-| Sağlayıcı | Sınıf | Özellik Seti |
-|----------|-------|-------------|
-| **OpenAI** | `OpenAI` | Tüm Modeller (GPT-4o, o1, vb.) |
-| **Anthropic** | `Anthropic` | Tüm Modeller (Claude 3.5, Opus) |
-| **Google** | `Google` | Tüm Modeller (Gemini 1.5 Pro/Flash) |
-| **Groq** | `Groq` | Tüm Modeller (Llama 3, Mixtral) |
-| **Azure** | `Azure` | Tüm Modeller (Enterprise) |
-| **OpenRouter**| `OpenRouter`| Tüm Modeller (100+) |
-
----
-
-## ⭐ Projeyi Destekleyin
-
-Bu proje size zaman kazandırdıysa, lütfen GitHub'da bir yıldız vermeyi düşünün! Büyümemize yardımcı olur.
-
-**[Bir Yıldız Verin!](https://github.com/Hosseinghorbani0/askai-python)**
-
----
-*Created by [Hossein Ghorbani](https://hosseinghorbani0.ir/) | [GitHub](https://github.com/Hosseinghorbani0).*
+- **GitHub Deposu**: [Hosseinghorbani0/ask-ai](https://github.com/Hosseinghorbani0/ask-ai) (Bize bir yıldız verin! ⭐)
+- **PyPI**: [askai-python](https://pypi.org/project/askai-python/)
+- **Resmi Web Sitesi**: [hosseinghorbani0.ir](https://hosseinghorbani0.ir/)

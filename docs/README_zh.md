@@ -1,4 +1,4 @@
-# askai-python
+# askai-python 🚀
 
 <p align="center">
   🌍 <b>Readme:</b>
@@ -12,71 +12,78 @@
   <a href="README_ja.md"><img src="https://flagcdn.com/20x15/jp.png" alt="Japanese"> 日本語</a>
 </p>
 
-# 🚀 askai-python
+<p align="center">
+  <b>一个极简的 Python SDK，用一行代码在不同的 LLM 供应商之间切换。</b><br/>
+  没有框架。没有服务器。没有过度设计。
+</p>
 
-**AI Made Simple.**
-只需一行代码即可连接到 OpenAI、Groq、Google、Anthropic 等。
-
-> 停止为每个提供商重写 AI 代码。只用一行。随时切换模型。
-
+[![PyPI version](https://img.shields.io/pypi/v/askai-python.svg)](https://pypi.org/project/askai-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 ---
 
-## ⚡ 为什么选择 askai-python？
-
-- **无 SDK 锁定**：不要学习 5 个不同的库。只学一个。
-- **统一 API**：`ai.ask()` 适用于所有提供商的文本、图像和音频。
-- **生产就绪**：内置类型安全、错误处理和环境管理。
-- **零配置**：自动检测环境中的 API 密钥。
-
----
-
-## 🚀 黄金示例 (The Golden Example)
-
-用 3 行代码见证 `askai-python` 的力量：
-
-```python
-from ask_ai import OpenAI, Anthropic, Google
-
-prompt = "用一句话解释量子计算。"
-
-# 即时切换提供商
-print("OpenAI:   ", OpenAI().ask(prompt))
-print("Claude:   ", Anthropic().ask(prompt))
-print("Gemini:   ", Google().ask(prompt))
-```
-
----
-
-## 📦 安装
+## ⚡ 快速开始 (5 秒)
 
 ```bash
 pip install askai-python
 ```
 
+```python
+from ask_ai import OpenAI, Groq
+
+# 自动从环境变量检测 OPENAI_API_KEY
+OpenAI().ask("像给5岁孩子一样解释黑洞").text
+
+# 毫不费力地切换供应商
+Groq().ask("像给5岁孩子一样解释黑洞").text
+```
+
 ---
 
-## 📖 快速入门指南
+## 🧐 为什么选择 ask-ai？
 
-### 1. 设置
-导出您的 API 密钥（或显式传递它们）。
-```bash
-export OPENAI_API_KEY="sk-..."
-export ANTHROPIC_API_KEY="sk-ant-..."
-```
+- **一个函数**: 只需调用 `.ask()`
+- **多个供应商**: OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter
+- **零配置**: 自动从环境中提取密钥
+- **SDK 优先，而不是框架**: 它绝不会妨碍您。
 
-### 2. 标准用法
+## ⚖️ 对比分析
+
+| 功能 | ask-ai | LangChain |
+| -------------- | ------ | --------- |
+| 设置时间 | 30 秒 | 1 小时 |
+| 学习曲线 | ⭐ | ⭐⭐⭐⭐⭐ |
+| 异步支持 | ⏳ *(即将推出)* | ⚠️ 复杂 |
+| 重试/超时 | ✅ 内置 | ❌ 手动 |
+| 需要网关 | ❌ 不需要 | ❌ 不需要 |
+| 切换供应商的行数 | **1** | 20+ |
+
+## 🚫 这个项目不是什么
+
+> ❌ 不是一个人工智能框架
+> ❌ 不是一个 API 网关
+> ❌ 不是一个代理内存系统
+
+它只完美地做一件事：**简化对 LLM 的 API 调用。**
+
+---
+
+## 🛠️ 高级用法
+
+### 内置重试和超时 (弹性)
+自动处理速率限制 (`429`) 和网络中断：
+
 ```python
 from ask_ai import OpenAI
-
 ai = OpenAI()
-print(ai.ask("你好，世界！"))
+
+# 在遇到网络错误时重试最多 3 次，设置一般超时时间为 10 秒
+response = ai.ask("编写一个 Python 脚本", retry=3, timeout=10)
 ```
 
-### 3. 高级用法 (专业)
-控制 `temperature`、`top_p` 和系统角色 (`prompt`) 以获得专业结果。
+### 系统配置
+直接设置系统提示词(System prompts)和温度(Temperature)：
 
 ```python
 ai.advanced(
@@ -84,29 +91,13 @@ ai.advanced(
     prompt="你是一名高级 DevOps 工程师。"
 )
 
-print(ai.ask("如何优化 Dockerfile？"))
+print(ai.ask("我该如何优化 Dockerfile？").text)
 ```
 
 ---
 
-## 🔌 支持的提供商
+## 🔗 重要链接
 
-| 提供者 | Class | 功能集 |
-|----------|-------|-------------|
-| **OpenAI** | `OpenAI` | 所有模型 (GPT-4o, o1, etc.) |
-| **Anthropic** | `Anthropic` | 所有模型 (Claude 3.5, Opus) |
-| **Google** | `Google` | 所有模型 (Gemini 1.5 Pro/Flash) |
-| **Groq** | `Groq` | 所有模型 (Llama 3, Mixtral) |
-| **Azure** | `Azure` | 所有部署 (Enterprise) |
-| **OpenRouter**| `OpenRouter`| 所有模型 (100+) |
-
----
-
-## ⭐ 支持本项目
-
-如果这个项目为您节省了时间，请考虑在 GitHub 上给它一颗星！这有助于我们成长。
-
-**[给它一颗星！](https://github.com/Hosseinghorbani0/askai-python)**
-
----
-*由 [Hossein Ghorbani](https://hosseinghorbani0.ir/) 构建 | [GitHub](https://github.com/Hosseinghorbani0)。*
+- **GitHub 仓库**: [Hosseinghorbani0/ask-ai](https://github.com/Hosseinghorbani0/ask-ai) (请给我们点亮星星 ⭐)
+- **PyPI**: [askai-python](https://pypi.org/project/askai-python/)
+- **官方网站**: [hosseinghorbani0.ir](https://hosseinghorbani0.ir/)
