@@ -25,7 +25,7 @@
 ---
 
 <p align="center">
-  <img src="./ask-ai-banner.svg" alt="Ask-AI Animated Demo">
+  <img src="./docs/ask-ai-banner.svg" alt="Ask-AI Animated Demo">
 </p>
 
 ---
