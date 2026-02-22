@@ -24,6 +24,12 @@
 
 ---
 
+<p align="center">
+  <img src="./ask-ai-banner.svg" alt="Ask-AI Animated Demo">
+</p>
+
+---
+
 ## ⚡ Quick Start (5 seconds)
 
 ```bash
