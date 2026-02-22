@@ -9,9 +9,30 @@ class Response:
     """
     Unified response object for all easyai requests.
     """
-    def __init__(self, text: str = "", media: Union[ImageObject, AudioObject, None] = None):
-        self.text = text
+    def __init__(self, text: str = "", media: Union[ImageObject, AudioObject, None] = None, **kwargs):
+        self._raw_text = text
         self.media = media
+        self._kwargs = kwargs
+
+    @property
+    def text(self) -> str:
+        text = self._raw_text
+        if self._kwargs.get('strip'):
+            from .utils import strip_tags
+            text = strip_tags(text)
+        if self._kwargs.get('clean'):
+            from .utils import clean_markdown
+            text = clean_markdown(text)
+        if self._kwargs.get('code'):
+            from .utils import extract_code
+            text = extract_code(text)
+        return text
+
+    @property
+    def json(self) -> Union[Dict[str, Any], list]:
+        """Returns parsed JSON. If 'json=True' was passed, this is highly reliable."""
+        from .utils import parse_json
+        return parse_json(self._raw_text)
 
     def __str__(self):
         return self.text
@@ -96,7 +117,10 @@ class BaseProvider:
         last_error = None
         while attempts <= retry:
             try:
-                return self._send_request(messages, final_config, output_type)
+                response = self._send_request(messages, final_config, output_type)
+                # Attach parsing arguments to the response object dynamically
+                response._kwargs.update(kwargs)
+                return response
             except Exception as e:
                 last_error = e
                 if self._is_retryable_error(e) and attempts < retry:
@@ -133,10 +157,16 @@ class BaseProvider:
 
     def _prepare_messages(self, query: str, config: AdvancedConfig) -> List[Dict[str, str]]:
         messages = []
-        if config.system_message:
-            messages.append({"role": "system", "content": config.system_message})
-        elif self.persona:
-            messages.append({"role": "system", "content": self.persona})
+        
+        system_msg = config.system_message or self.persona or ""
+        
+        # Smart capability: if json=True, enforce JSON system prompt
+        if config.extra.get('json'):
+            json_instruction = "You must respond with valid JSON only, without any markdown formatting or tags."
+            system_msg = f"{system_msg}\n{json_instruction}".strip()
+
+        if system_msg:
+            messages.append({"role": "system", "content": system_msg})
         
         messages.append({"role": "user", "content": query})
         return messages

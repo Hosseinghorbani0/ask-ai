@@ -13,8 +13,8 @@
 </p>
 
 <p align="center">
-  <b>LLM sağlayıcıları arasında tek satırda geçiş yapmak için minimal bir Python SDK'sı.</b><br/>
-  Framework yok. Sunucu yok. Aşırı mühendislik yok.
+  <b>Sadece tek bir satır kodla LLM sağlayıcıları arasında geçiş yapmak için minimal bir Python SDK'sı.</b><br/>
+  Ekstra framework yok. Sunucuya gerek yok. Karmaşıklık yok.
 </p>
 
 [![PyPI version](https://img.shields.io/pypi/v/askai-python.svg)](https://pypi.org/project/askai-python/)
@@ -23,7 +23,7 @@
 
 ---
 
-## ⚡ Hızlı Başlangıç (5 saniye)
+## ⚡ Hızlı Başlangıç (5 Saniye)
 
 ```bash
 pip install askai-python
@@ -32,58 +32,65 @@ pip install askai-python
 ```python
 from ask_ai import OpenAI, Groq
 
-# Çevreden OPENAI_API_KEY'yi otomatik algılar
-OpenAI().ask("Bana kara delikleri 5 yaşındaymışım gibi anlat").text
+# Çevreden otomatik olarak OPENAI_API_KEY algılar
+OpenAI().ask("Kara delikleri 5 yaşındaki bir çocuğa anlatır gibi açıkla").text
 
-# Anında sağlayıcı değiştirin
-Groq().ask("Bana kara delikleri 5 yaşındaymışım gibi anlat").text
+# Sağlayıcıları anında değiştirin
+Groq().ask("Kara delikleri 5 yaşındaki bir çocuğa anlatır gibi açıkla").text
 ```
 
 ---
 
 ## 🧐 Neden ask-ai?
 
-- **Tek fonksiyon**: Sadece `.ask()` çağrısı yapın
-- **Çoklu sağlayıcı**: OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter
+- **Tek bir fonksiyon**: Sadece `.ask()` çağrısı yapın.
+- **Birden çok sağlayıcı**: OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter
 - **Sıfır yapılandırma**: Anahtarlar otomatik olarak ortam değişkenlerinden çekilir.
-- **SDK öncelikli, framework değil**: Yolunuza çıkmaz.
-
-## ⚖️ Karşılaştırma
-
-| Özellik | ask-ai | LangChain |
-| -------------- | ------ | --------- |
-| Kurulum süresi | 30 saniye | 1 saat |
-| Öğrenme eğrisi | ⭐ | ⭐⭐⭐⭐⭐ |
-| Async desteği | ⏳ *(Çok yakında)* | ⚠️ Karmaşık |
-| Tekrar/Zaman Aşımı | ✅ Dahili | ❌ Manuel |
-| Ağ geçidi (Gateway) | ❌ Hayır | ❌ Hayır |
-| Sağlayıcı değişimi (satır) | **1** | 20+ |
+- **Öncelik SDK, Framework değil**: Sisteminize veya mimarinize müdahale etmez.
 
 ## 🚫 Bu proje ne DEĞİLDİR
 
-> ❌ Bir AI framework'ü değil
-> ❌ Bir API ağ geçidi değil
-> ❌ Bir ajan (agent) hafıza sistemi değil
+> ❌ Büyük bir AI framework'ü değildir.
+> ❌ Bir API Gateway değildir.
+> ❌ Sistem hafızasını yöneten bir Agent değildir.
 
-Sadece bir şeyi mükemmel yapar: **LLM'lere API çağrılarını basitleştirmek.**
+Bu proje sadece tek bir şeyi mükemmel yapar: **LLM'lere yapılan API çağrılarını basitleştirmek.**
 
 ---
 
 ## 🛠️ Gelişmiş Kullanım
 
-### Dahili Esneklik (Retries & Timeout)
-Sınır aşımlarını (`429`) ve ağ düşmelerini otomatik olarak yönetin:
+### 🧰 Geliştirici Araçları (Auto-Parsing)
+Model çıktılarını temizlemek için Regex yazmayı bırakın! `ask-ai` yerleşik metin işleme işaretleriyle (flags) gelir:
 
 ```python
 from ask_ai import OpenAI
 ai = OpenAI()
 
-# Ağ hatalarında 3 defaya kadar tekrar dener, varsayılan zaman aşımı 10s
+# 1. Clean Markdown (```json gibi etiketleri temizler)
+clean_text = ai.ask("Write JSON", clean=True).text
+
+# 2. Extract Code (Sadece kod bloğunu çıkarır, sohbeti yok sayar)
+code = ai.ask("Write a python script", code=True).text
+
+# 3. Strip Tags (<think> ve HTML etiketlerini kaldırır)
+answer_only = ai.ask("What is 1+1?", strip=True).text
+
+# 4. Enforce & Parse JSON (Doğrudan işlenmiş bir Python Sözlüğü döndürür)
+data_dict = ai.ask("Extract info", json=True).json
+print(data_dict['name'])
+```
+
+### 🔄 Yerleşik Yeniden Deneme ve Zaman Aşımı (Resiliency)
+Hız sınırlarını (`429`) ve ağ kesintilerini otomatik olarak yönetin:
+
+```python
+# Ağ hatası durumunda 3 defaya kadar tekrar dener, genel zaman aşımı 10 saniye
 response = ai.ask("Bir python scripti yaz", retry=3, timeout=10)
 ```
 
-### Sistem Yapılandırması
-Sistem komutlarını ve sıcaklığı (temperature) doğrudan ayarlayın:
+### ⚙ Sistem Yapılandırması 
+Sistem rollerini ve temperature değerini doğrudan ayarlayın:
 
 ```python
 ai.advanced(
@@ -98,6 +105,6 @@ print(ai.ask("Bir Dockerfile'ı nasıl optimize ederim?").text)
 
 ## 🔗 Önemli Bağlantılar
 
-- **GitHub Deposu**: [Hosseinghorbani0/ask-ai](https://github.com/Hosseinghorbani0/ask-ai) (Bize bir yıldız verin! ⭐)
-- **PyPI**: [askai-python](https://pypi.org/project/askai-python/)
+- **GitHub Deposu**: [Hosseinghorbani0/ask-ai](https://github.com/Hosseinghorbani0/ask-ai) (Bize bir yıldız vermeyi unutmayın! ⭐)
+- **PyPI Paketi**: [askai-python](https://pypi.org/project/askai-python/)
 - **Resmi Web Sitesi**: [hosseinghorbani0.ir](https://hosseinghorbani0.ir/)

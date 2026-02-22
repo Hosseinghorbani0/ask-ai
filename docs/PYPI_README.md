@@ -34,16 +34,6 @@ print(Groq().ask("Explain black holes like I'm 5").text)
 - **Zero config**: Keys are pulled from the environment automatically
 - **SDK-first, not a framework**: It stays out of your way.
 
-## ⚖️ How it compares
-
-| Feature        | ask-ai | LangChain |
-| -------------- | ------ | --------- |
-| Setup time     | 30 sec | 1 hour    |
-| Learning curve | ⭐      | ⭐⭐⭐⭐⭐     |
-| Async support  | ⏳ *(Coming soon)* | ⚠️ Complex |
-| Retry/Timeout  | ✅ Built-in | ❌ Manual |
-| Gateway needed | ❌ No      | ❌ No      |
-
 ## 🚫 What this project is NOT
 
 > ❌ Not an AI framework  
@@ -53,6 +43,33 @@ print(Groq().ask("Explain black holes like I'm 5").text)
 It does one thing perfectly: **Simplifying the API call to LLMs.**
 
 ---
+
+## 🛠️ Advanced Usage
+
+### 🧰 Developer QoL Utilities (Auto-Parsing)
+Stop writing Regex to clean up model outputs! `ask-ai` comes with built-in text processing flags:
+
+```python
+from ask_ai import OpenAI
+ai = OpenAI()
+
+# 1. Clean Markdown (Removes ```json and ``` tags)
+# Perfect for extracting raw data from models that wrap everything in markdown
+clean_text = ai.ask("Write JSON", clean=True).text
+
+# 2. Extract Code (Returns ONLY the code block, ignores conversational filler)
+# Great for automation pipelines
+code = ai.ask("Write a python ping script", code=True).text
+
+# 3. Strip Tags (Removes <think> blocks and HTML)
+# Essential for reasoning models like DeepSeek-R1
+answer_only = ai.ask("What is 1+1?", strip=True).text
+
+# 4. Enforce & Parse JSON (Directly returns a Parsed Python Dictionary)
+# Adds JSON instructions to the prompt and safely runs json.loads()
+data_dict = ai.ask("Extract user info", json=True).json
+print(data_dict['name'])
+```
 
 ## 🚀 Built-in Resiliency (Retries & Timeouts)
 

@@ -22,5 +22,9 @@ class MediaTypeNotSupportedError(AskAIError):
     """Raised when a provider can't handle the requested media type."""
     pass
 
+class AskAIParsingError(AskAIError):
+    """Raised when expect_json is True but the response cannot be parsed."""
+    pass
+
 # Alias for backwards compatibility internally
 APIKeyError = AskAIConfigError
