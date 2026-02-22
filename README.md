@@ -22,11 +22,6 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 
----
-
-<p align="center">
-  <img src="./docs/ask-ai-banner.svg" alt="Ask-AI Animated Demo">
-</p>
 
 ---
 
