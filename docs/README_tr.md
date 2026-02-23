@@ -12,6 +12,11 @@
   <a href="README_ja.md"><img src="https://flagcdn.com/20x15/jp.png" alt="Japanese"> 日本語</a>
 </p>
 
+
+<p align="center">
+  <img src="../assets/banner.svg" alt="ask-ai animated banner" width="100%">
+</p>
+
 <p align="center">
   <b>Sadece tek bir satır kodla LLM sağlayıcıları arasında geçiş yapmak için minimal bir Python SDK'sı.</b><br/>
   Ekstra framework yok. Sunucuya gerek yok. Karmaşıklık yok.
@@ -61,6 +66,10 @@ Bu proje sadece tek bir şeyi mükemmel yapar: **LLM'lere yapılan API çağrıl
 ## 🛠️ Gelişmiş Kullanım
 
 ### 🧰 Geliştirici Araçları (Auto-Parsing)
+
+<p align="center">
+  <img src="../assets/features.svg" alt="ask-ai features parsing banner" width="100%">
+</p>
 Model çıktılarını temizlemek için Regex yazmayı bırakın! `ask-ai` yerleşik metin işleme işaretleriyle (flags) gelir:
 
 ```python
@@ -82,6 +91,10 @@ print(data_dict['name'])
 ```
 
 ### 🔄 Yerleşik Yeniden Deneme ve Zaman Aşımı (Resiliency)
+
+<p align="center">
+  <img src="../assets/resiliency.svg" alt="ask-ai resiliency banner" width="100%">
+</p>
 Hız sınırlarını (`429`) ve ağ kesintilerini otomatik olarak yönetin:
 
 ```python

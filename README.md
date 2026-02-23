@@ -12,6 +12,11 @@
   <a href="docs/README_ja.md"><img src="https://flagcdn.com/20x15/jp.png" alt="Japanese"> 日本語</a>
 </p>
 
+
+<p align="center">
+  <img src="assets/banner.svg" alt="ask-ai animated banner" width="100%">
+</p>
+
 <p align="center">
   <b>A minimal Python SDK to switch between LLM providers in one line.</b><br/>
   No frameworks. No servers. No overengineering.
@@ -63,6 +68,10 @@ It does one thing perfectly: **Simplifying the API call to LLMs.**
 ## 🛠️ Advanced Usage
 
 ### 🧰 Developer QoL Utilities (Auto-Parsing)
+
+<p align="center">
+  <img src="assets/features.svg" alt="ask-ai features parsing banner" width="100%">
+</p>
 Stop writing Regex to clean up model outputs! `ask-ai` comes with built-in text processing flags:
 
 ```python
@@ -88,6 +97,10 @@ print(data_dict['name'])
 ```
 
 ### 🔄 Built-in Retries & Timeout (Resiliency)
+
+<p align="center">
+  <img src="assets/resiliency.svg" alt="ask-ai resiliency banner" width="100%">
+</p>
 Handle rate limits (`429`) and network drops automatically:
 
 ```python

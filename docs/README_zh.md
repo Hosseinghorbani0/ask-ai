@@ -12,6 +12,11 @@
   <a href="README_ja.md"><img src="https://flagcdn.com/20x15/jp.png" alt="Japanese"> 日本語</a>
 </p>
 
+
+<p align="center">
+  <img src="../assets/banner.svg" alt="ask-ai animated banner" width="100%">
+</p>
+
 <p align="center">
   <b>一个极简的 Python SDK，用一行代码在不同的 LLM 供应商之间切换。</b><br/>
   没有框架。没有服务器。没有过度设计。
@@ -61,6 +66,10 @@ Groq().ask("像给5岁孩子一样解释黑洞").text
 ## 🛠️ 高级用法
 
 ### 🧰 开发者实用工具 (Auto-Parsing)
+
+<p align="center">
+  <img src="../assets/features.svg" alt="ask-ai features parsing banner" width="100%">
+</p>
 内置文本处理工具，告别手写 Regex！
 
 ```python
@@ -82,6 +91,10 @@ print(data_dict['name'])
 ```
 
 ### 🔄 内置重试和超时 (弹性)
+
+<p align="center">
+  <img src="../assets/resiliency.svg" alt="ask-ai resiliency banner" width="100%">
+</p>
 自动处理速率限制 (`429`) 和网络中断：
 
 ```python

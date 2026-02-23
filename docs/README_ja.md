@@ -12,6 +12,11 @@
   <a href="README_ja.md"><img src="https://flagcdn.com/20x15/jp.png" alt="Japanese"> 日本語</a>
 </p>
 
+
+<p align="center">
+  <img src="../assets/banner.svg" alt="ask-ai animated banner" width="100%">
+</p>
+
 <p align="center">
   <b>たった1行のコードでLLMプロバイダーを切り替える、最小構成のPython SDK。</b><br/>
   フレームワーク不要。サーバー不要。過剰な設計不要。
@@ -61,6 +66,10 @@ Groq().ask("5歳の子供に説明するようにブラックホールを説明�
 ## 🛠️ 高度な使い方
 
 ### 🧰 開発者向けツール (Auto-Parsing)
+
+<p align="center">
+  <img src="../assets/features.svg" alt="ask-ai features parsing banner" width="100%">
+</p>
 モデルの出力をクリーンアップするために正規表現を書くのはやめましょう！ `ask-ai` には組み込みのパースフラグがあります：
 
 ```python
@@ -82,6 +91,10 @@ print(data_dict['name'])
 ```
 
 ### 🔄 内蔵の再試行とタイムアウト (Resiliency)
+
+<p align="center">
+  <img src="../assets/resiliency.svg" alt="ask-ai resiliency banner" width="100%">
+</p>
 レート制限 (`429`) やネットワークの切断を指数的バックオフで自動的に処理します：
 
 ```python

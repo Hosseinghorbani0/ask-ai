@@ -136,6 +136,17 @@ class BaseProvider:
         from .exceptions import AskAINetworkError
         raise AskAINetworkError(f"Request failed after {retry} retries. Last error: {last_error}")
 
+    async def ask_async(self, query: str, **kwargs) -> Response:
+        """
+        Asynchronous wrapper for the .ask() method.
+        Perfect for Telegram bots (Aiogram) and FastAPI.
+        """
+        import asyncio
+        loop = asyncio.get_event_loop()
+        def _sync_ask():
+            return self.ask(query, **kwargs)
+        return await loop.run_in_executor(None, _sync_ask)
+
     def _is_retryable_error(self, e: Exception) -> bool:
         """Dynamically detect rate limits and network timeouts across different provider SDKs."""
         err_str = str(e).lower()

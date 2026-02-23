@@ -12,6 +12,11 @@
   <a href="README_ja.md"><img src="https://flagcdn.com/20x15/jp.png" alt="Japanese"> 日本語</a>
 </p>
 
+
+<p align="center">
+  <img src="../assets/banner.svg" alt="ask-ai animated banner" width="100%">
+</p>
+
 <p align="center">
   <b>Un SDK minimalista de Python para cambiar entre proveedores de IA con solo una línea de código.</b><br/>
   Cero frameworks. Cero servidores. Cero complicaciones.
@@ -61,6 +66,10 @@ Este proyecto hace una sola cosa a la perfección: **Simplificar las llamadas a 
 ## 🛠️ Uso Avanzado
 
 ### 🧰 Utilidades para el Desarrollador (Auto-Parsing)
+
+<p align="center">
+  <img src="../assets/features.svg" alt="ask-ai features parsing banner" width="100%">
+</p>
 ¡Deja de escribir Regex para limpiar las respuestas! `ask-ai` incluye flags internos:
 
 ```python
@@ -82,6 +91,10 @@ print(data_dict['name'])
 ```
 
 ### 🔄 Reintentos y Límite de Tiempo (Resiliency)
+
+<p align="center">
+  <img src="../assets/resiliency.svg" alt="ask-ai resiliency banner" width="100%">
+</p>
 Maneja las limitaciones de tasa (`429`) y la pérdida de redes de forma automática:
 
 ```python

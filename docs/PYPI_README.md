@@ -47,6 +47,10 @@ It does one thing perfectly: **Simplifying the API call to LLMs.**
 ## 🛠️ Advanced Usage
 
 ### 🧰 Developer QoL Utilities (Auto-Parsing)
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Hosseinghorbani0/ask-ai/main/assets/features.svg" alt="ask-ai features parsing banner" width="100%">
+</p>
 Stop writing Regex to clean up model outputs! `ask-ai` comes with built-in text processing flags:
 
 ```python
@@ -72,6 +76,10 @@ print(data_dict['name'])
 ```
 
 ## 🚀 Built-in Resiliency (Retries & Timeouts)
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Hosseinghorbani0/ask-ai/main/assets/resiliency.svg" alt="ask-ai resiliency banner" width="100%">
+</p>
 
 Build reliable apps without writing your own loops. `askai-python` handles rate limits (`429`) and network drops via an internal exponential backoff.
 
