@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "askai-python"
-version = "0.3.2"
+version = "0.3.3"
 description = "AI Made Stupid Simple. Unified API for OpenAI, Groq, Google, and more."
 readme = "docs/PYPI_README.md"
 requires-python = ">=3.8"
@@ -24,3 +24,10 @@ dependencies = [
 [project.urls]
 "Homepage" = "https://hosseinghorbani0.ir/"
 "Bug Tracker" = "https://github.com/Hosseinghorbani0/ask-ai/issues"
+
+[tool.setuptools.packages.find]
+include = ["ask_ai*"]
+exclude = ["assets*", "docs*", "tests*", ".gemini*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.txt", "*.md"]
