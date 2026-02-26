@@ -22,7 +22,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest Anthropic openai google-generativeai groq requests flake8 Pillow
+        pip install pytest anthropic openai google-generativeai groq requests flake8 pillow
         pip install .
 
     - name: Lint with flake8

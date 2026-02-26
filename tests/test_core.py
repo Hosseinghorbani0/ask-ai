@@ -17,8 +17,7 @@ def test_advanced_config_aliases():
 def test_provider_instantiation():
     # These should succeed with a fake key because clients are lazy-loaded or just stored
     # We set env var to None to ensure it uses the passed key
-    if "OPENAI_API_KEY" in os.environ:
-        del os.environ["OPENAI_API_KEY"]
+    os.environ.pop("OPENAI_API_KEY", None)
         
     ai = OpenAI(api_key="sk-fake-key-for-testing")
     assert ai.api_key == "sk-fake-key-for-testing"
