@@ -1,9 +1,9 @@
 import os
-import base64
 from PIL import Image
 from io import BytesIO
 import platform
 import subprocess
+
 
 class MediaObject:
     def __init__(self, data: bytes, media_type: str):
@@ -13,6 +13,7 @@ class MediaObject:
     @property
     def bytes(self) -> bytes:
         return self.data
+
 
 class ImageObject(MediaObject):
     def __init__(self, data: bytes):
@@ -32,6 +33,7 @@ class ImageObject(MediaObject):
         except Exception as e:
             print(f"Error showing image: {e}")
 
+
 class AudioObject(MediaObject):
     def __init__(self, data: bytes):
         super().__init__(data, "audio")
@@ -46,15 +48,15 @@ class AudioObject(MediaObject):
         """Play the audio using the default OS player."""
         # Simple cross-platform play attempt
         import tempfile
-        
+
         # Save to temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
             f.write(self.data)
             temp_path = f.name
-            
+
         try:
             if platform.system() == "Windows":
-                 os.startfile(temp_path)
+                os.startfile(temp_path)
             elif platform.system() == "Darwin":
                 subprocess.call(["open", temp_path])
             else:

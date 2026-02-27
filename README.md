@@ -125,12 +125,31 @@ print(ai.ask("How do I optimize a Dockerfile?").text)
 
 ---
 
+### 🚀 Async Support (FastAPI / Aiogram)
+
+`ask-ai` works perfectly in asynchronous environments:
+
+```python
+import asyncio
+from ask_ai import OpenAI
+
+async def main():
+    ai = OpenAI()
+    # Runs non-blocking in your event loop
+    response = await ai.ask_async("What is the capital of France?")
+    print(response.text)
+
+asyncio.run(main())
+```
+
+---
+
 ## 🗺️ Roadmap
 
 - [x] OpenAI, Groq, Gemini, Anthropic, Azure, OpenRouter support
 - [x] Text to Image (DALL-E) and Text to Audio
 - [x] Automated Retry & Timeout controls
-- [ ] Async Support (`await ask_async`)
+- [x] Async Support (`await ask_async`)
 - [ ] Provider Fallback (`ask(..., providers=[OpenAI, Groq])`)
 - [ ] Streaming Support (`ask_stream`)
 - [ ] Structured Output (Pydantic Support)

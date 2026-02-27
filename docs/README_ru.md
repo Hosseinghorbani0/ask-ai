@@ -14,7 +14,7 @@
 
 
 <p align="center">
-  <img src="../assets/banner.svg" alt="ask-ai animated banner" width="100%">
+  <img src="../assets/banner.svg" alt="askai-python animated banner" width="100%">
 </p>
 
 <p align="center">
@@ -46,7 +46,7 @@ Groq().ask("Объясни чёрные дыры как для 5-летнего"
 
 ---
 
-## 🧐 Почему ask-ai?
+## 🧐 Почему askai-python?
 
 - **Одна функция**: Просто вызовите `.ask()`.
 - **Поддержка множества провайдеров**: OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter.
@@ -68,9 +68,9 @@ Groq().ask("Объясни чёрные дыры как для 5-летнего"
 ### 🧰 Инструменты для разработчиков (Auto-Parsing)
 
 <p align="center">
-  <img src="../assets/features.svg" alt="ask-ai features parsing banner" width="100%">
+  <img src="../assets/features.svg" alt="askai-python features parsing banner" width="100%">
 </p>
-Больше не нужно писать Regex для очистки вывода! `ask-ai` содержит встроенные флаги:
+Больше не нужно писать Regex для очистки вывода! `askai-python` содержит встроенные флаги:
 
 ```python
 from ask_ai import OpenAI
@@ -93,7 +93,7 @@ print(data_dict['name'])
 ### 🔄 Встроенные повторные попытки и таймаут (Resiliency)
 
 <p align="center">
-  <img src="../assets/resiliency.svg" alt="ask-ai resiliency banner" width="100%">
+  <img src="../assets/resiliency.svg" alt="askai-python resiliency banner" width="100%">
 </p>
 Умная обработка ошибок сети и ограничений скорости (`429`) с экспоненциальной задержкой:
 
@@ -118,6 +118,6 @@ print(ai.ask("Как мне оптимизировать Dockerfile?").text)
 
 ## 🔗 Важные ссылки
 
-- **GitHub-репозиторий**: [Hosseinghorbani0/ask-ai](https://github.com/Hosseinghorbani0/ask-ai) (Не забудьте поставить звезду! ⭐)
+- **GitHub-репозиторий**: [Hosseinghorbani0/askai-python](https://github.com/Hosseinghorbani0/askai-python) (Не забудьте поставить звезду! ⭐)
 - **PyPI пакет**: [askai-python](https://pypi.org/project/askai-python/)
 - **Официальный сайт**: [hosseinghorbani0.ir](https://hosseinghorbani0.ir/)

@@ -14,7 +14,7 @@
 
 
 <p align="center">
-  <img src="../assets/banner.svg" alt="ask-ai animated banner" width="100%">
+  <img src="../assets/banner.svg" alt="askai-python animated banner" width="100%">
 </p>
 
 <p align="center">
@@ -46,7 +46,7 @@ Groq().ask("Kara delikleri 5 yaşındaki bir çocuğa anlatır gibi açıkla").t
 
 ---
 
-## 🧐 Neden ask-ai?
+## 🧐 Neden askai-python?
 
 - **Tek bir fonksiyon**: Sadece `.ask()` çağrısı yapın.
 - **Birden çok sağlayıcı**: OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter
@@ -68,9 +68,9 @@ Bu proje sadece tek bir şeyi mükemmel yapar: **LLM'lere yapılan API çağrıl
 ### 🧰 Geliştirici Araçları (Auto-Parsing)
 
 <p align="center">
-  <img src="../assets/features.svg" alt="ask-ai features parsing banner" width="100%">
+  <img src="../assets/features.svg" alt="askai-python features parsing banner" width="100%">
 </p>
-Model çıktılarını temizlemek için Regex yazmayı bırakın! `ask-ai` yerleşik metin işleme işaretleriyle (flags) gelir:
+Model çıktılarını temizlemek için Regex yazmayı bırakın! `askai-python` yerleşik metin işleme işaretleriyle (flags) gelir:
 
 ```python
 from ask_ai import OpenAI
@@ -93,7 +93,7 @@ print(data_dict['name'])
 ### 🔄 Yerleşik Yeniden Deneme ve Zaman Aşımı (Resiliency)
 
 <p align="center">
-  <img src="../assets/resiliency.svg" alt="ask-ai resiliency banner" width="100%">
+  <img src="../assets/resiliency.svg" alt="askai-python resiliency banner" width="100%">
 </p>
 Hız sınırlarını (`429`) ve ağ kesintilerini otomatik olarak yönetin:
 
@@ -118,6 +118,6 @@ print(ai.ask("Bir Dockerfile'ı nasıl optimize ederim?").text)
 
 ## 🔗 Önemli Bağlantılar
 
-- **GitHub Deposu**: [Hosseinghorbani0/ask-ai](https://github.com/Hosseinghorbani0/ask-ai) (Bize bir yıldız vermeyi unutmayın! ⭐)
+- **GitHub Deposu**: [Hosseinghorbani0/askai-python](https://github.com/Hosseinghorbani0/askai-python) (Bize bir yıldız vermeyi unutmayın! ⭐)
 - **PyPI Paketi**: [askai-python](https://pypi.org/project/askai-python/)
 - **Resmi Web Sitesi**: [hosseinghorbani0.ir](https://hosseinghorbani0.ir/)

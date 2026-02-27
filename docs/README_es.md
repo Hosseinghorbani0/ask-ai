@@ -14,7 +14,7 @@
 
 
 <p align="center">
-  <img src="../assets/banner.svg" alt="ask-ai animated banner" width="100%">
+  <img src="../assets/banner.svg" alt="askai-python animated banner" width="100%">
 </p>
 
 <p align="center">
@@ -46,7 +46,7 @@ Groq().ask("Explícame los agujeros negros como si tuviera 5 años").text
 
 ---
 
-## 🧐 ¿Por qué ask-ai?
+## 🧐 ¿Por qué askai-python?
 
 - **Una función**: Simplemente llama a `.ask()`.
 - **Múltiples proveedores**: Soporte para OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter.
@@ -68,9 +68,9 @@ Este proyecto hace una sola cosa a la perfección: **Simplificar las llamadas a 
 ### 🧰 Utilidades para el Desarrollador (Auto-Parsing)
 
 <p align="center">
-  <img src="../assets/features.svg" alt="ask-ai features parsing banner" width="100%">
+  <img src="../assets/features.svg" alt="askai-python features parsing banner" width="100%">
 </p>
-¡Deja de escribir Regex para limpiar las respuestas! `ask-ai` incluye flags internos:
+¡Deja de escribir Regex para limpiar las respuestas! `askai-python` incluye flags internos:
 
 ```python
 from ask_ai import OpenAI
@@ -93,7 +93,7 @@ print(data_dict['name'])
 ### 🔄 Reintentos y Límite de Tiempo (Resiliency)
 
 <p align="center">
-  <img src="../assets/resiliency.svg" alt="ask-ai resiliency banner" width="100%">
+  <img src="../assets/resiliency.svg" alt="askai-python resiliency banner" width="100%">
 </p>
 Maneja las limitaciones de tasa (`429`) y la pérdida de redes de forma automática:
 
@@ -118,6 +118,6 @@ print(ai.ask("¿Cómo optimizo un Dockerfile?").text)
 
 ## 🔗 Enlaces Importantes
 
-- **Repositorio de GitHub**: [Hosseinghorbani0/ask-ai](https://github.com/Hosseinghorbani0/ask-ai) (¡No olvides de dejarnos una estrella! ⭐)
+- **Repositorio de GitHub**: [Hosseinghorbani0/askai-python](https://github.com/Hosseinghorbani0/askai-python) (¡No olvides de dejarnos una estrella! ⭐)
 - **Paquete PyPI**: [askai-python](https://pypi.org/project/askai-python/)
 - **Sitio web oficial**: [hosseinghorbani0.ir](https://hosseinghorbani0.ir/)

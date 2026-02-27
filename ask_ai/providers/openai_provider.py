@@ -1,19 +1,19 @@
-import os
 import json
 import requests
-from typing import List, Dict, Any, Optional
+from typing import List, Dict
 import openai
 from ..base import BaseProvider, Response
 from ..media import ImageObject, AudioObject
 from ..config import AdvancedConfig
 from ..exceptions import APIKeyError, ProviderError
 
-class OpenAIProvider(BaseProvider): # Renamed to avoid name collision in imports
+
+class OpenAIProvider(BaseProvider):  # Renamed to avoid name collision in imports
     def __init__(self, api_key: str = None, model: str = None, **kwargs):
         super().__init__(api_key, model, **kwargs)
         if not self.api_key:
-             raise APIKeyError("OpenAI API Key is missing. Set OPENAI_API_KEY env var or pass api_key=")
-        
+            raise APIKeyError("OpenAI API Key is missing. Set OPENAI_API_KEY env var or pass api_key=")
+
         self.client = openai.OpenAI(api_key=self.api_key)
 
     def _get_api_key_env_var(self):
@@ -29,11 +29,11 @@ class OpenAIProvider(BaseProvider): # Renamed to avoid name collision in imports
         1. Explicit output_type (image/audio)
         2. Text generation (with function calling for smart intent)
         """
-        
+
         # 1. Explicit Image
         if output_type == "image":
             return self._generate_image(messages, config)
-            
+
         # 2. Explicit Audio
         if output_type == "audio":
             return self._generate_audio(messages, config)
@@ -53,7 +53,7 @@ class OpenAIProvider(BaseProvider): # Renamed to avoid name collision in imports
                 "frequency_penalty": config.frequency_penalty,
                 "presence_penalty": config.presence_penalty,
                 "tools": self._get_media_tools(),
-                "tool_choice": "auto" 
+                "tool_choice": "auto"
             }
             # Filter None
             kwargs = {k: v for k, v in kwargs.items() if v is not None}
@@ -66,14 +66,14 @@ class OpenAIProvider(BaseProvider): # Renamed to avoid name collision in imports
                 tool_call = message.tool_calls[0]
                 function_name = tool_call.function.name
                 arguments = json.loads(tool_call.function.arguments)
-                
+
                 if function_name == "generate_image":
                     print(f"[Smart Intent] Detecting Image Generation: {arguments.get('prompt')}")
                     # Recursively call image gen with the prompt
                     return self._generate_image([{"role": "user", "content": arguments.get("prompt")}], config)
-                
+
                 elif function_name == "generate_speech":
-                    print(f"[Smart Intent] Detecting Speech Generation")
+                    print("[Smart Intent] Detecting Speech Generation")
                     return self._generate_audio([{"role": "user", "content": arguments.get("text")}], config)
 
             # Normal Text Response
@@ -87,17 +87,17 @@ class OpenAIProvider(BaseProvider): # Renamed to avoid name collision in imports
         prompt = messages[-1]["content"]
         try:
             response = self.client.images.generate(
-                model="dall-e-3", # Defaulting to d3
+                model="dall-e-3",  # Defaulting to d3
                 prompt=prompt,
                 size="1024x1024",
                 quality="standard",
                 n=1,
             )
-            
+
             image_url = response.data[0].url
             # Download image bytes
             img_data = requests.get(image_url).content
-            
+
             return Response(
                 text=f"Generated image for: {prompt}",
                 media=ImageObject(img_data)

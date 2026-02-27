@@ -14,7 +14,7 @@
 
 
 <p align="center">
-  <img src="../assets/banner.svg" alt="ask-ai animated banner" width="100%">
+  <img src="../assets/banner.svg" alt="askai-python animated banner" width="100%">
 </p>
 
 <p align="center">
@@ -46,7 +46,7 @@ Groq().ask("5歳の子供に説明するようにブラックホールを説明�
 
 ---
 
-## 🧐 なぜ ask-ai なのか？
+## 🧐 なぜ askai-python なのか？
 
 - **関数は1つだけ**: `.ask()` を呼び出すだけです。
 - **複数のプロバイダー**: OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter
@@ -68,9 +68,9 @@ Groq().ask("5歳の子供に説明するようにブラックホールを説明�
 ### 🧰 開発者向けツール (Auto-Parsing)
 
 <p align="center">
-  <img src="../assets/features.svg" alt="ask-ai features parsing banner" width="100%">
+  <img src="../assets/features.svg" alt="askai-python features parsing banner" width="100%">
 </p>
-モデルの出力をクリーンアップするために正規表現を書くのはやめましょう！ `ask-ai` には組み込みのパースフラグがあります：
+モデルの出力をクリーンアップするために正規表現を書くのはやめましょう！ `askai-python` には組み込みのパースフラグがあります：
 
 ```python
 from ask_ai import OpenAI
@@ -93,7 +93,7 @@ print(data_dict['name'])
 ### 🔄 内蔵の再試行とタイムアウト (Resiliency)
 
 <p align="center">
-  <img src="../assets/resiliency.svg" alt="ask-ai resiliency banner" width="100%">
+  <img src="../assets/resiliency.svg" alt="askai-python resiliency banner" width="100%">
 </p>
 レート制限 (`429`) やネットワークの切断を指数的バックオフで自動的に処理します：
 
@@ -118,6 +118,6 @@ print(ai.ask("Dockerfileを最適化するにはどうすればいいですか�
 
 ## 🔗 重要なリンク
 
-- **GitHub リポジトリ**: [Hosseinghorbani0/ask-ai](https://github.com/Hosseinghorbani0/ask-ai) (ぜひスター⭐をつけてください！)
+- **GitHub リポジトリ**: [Hosseinghorbani0/askai-python](https://github.com/Hosseinghorbani0/askai-python) (ぜひスター⭐をつけてください！)
 - **PyPI パッケージ**: [askai-python](https://pypi.org/project/askai-python/)
 - **公式ウェブサイト**: [hosseinghorbani0.ir](https://hosseinghorbani0.ir/)

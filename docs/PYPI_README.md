@@ -5,7 +5,7 @@ No frameworks. No servers. No overengineering.
 
 [![PyPI version](https://img.shields.io/pypi/v/askai-python.svg)](https://pypi.org/project/askai-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub](https://img.shields.io/badge/GitHub-View%20Source-blue.svg)](https://github.com/Hosseinghorbani0/ask-ai)
+[![GitHub](https://img.shields.io/badge/GitHub-View%20Source-blue.svg)](https://github.com/Hosseinghorbani0/askai-python)
 
 ---
 
@@ -27,7 +27,7 @@ print(Groq().ask("Explain black holes like I'm 5").text)
 
 ---
 
-## 🧐 Why ask-ai?
+## 🧐 Why askai-python?
 
 - **One function**: Just call `.ask()`
 - **Multiple providers**: OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter
@@ -49,9 +49,9 @@ It does one thing perfectly: **Simplifying the API call to LLMs.**
 ### 🧰 Developer QoL Utilities (Auto-Parsing)
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Hosseinghorbani0/ask-ai/main/assets/features.svg" alt="ask-ai features parsing banner" width="100%">
+  <img src="https://raw.githubusercontent.com/Hosseinghorbani0/askai-python/main/assets/features.svg" alt="askai-python features parsing banner" width="100%">
 </p>
-Stop writing Regex to clean up model outputs! `ask-ai` comes with built-in text processing flags:
+Stop writing Regex to clean up model outputs! `askai-python` comes with built-in text processing flags:
 
 ```python
 from ask_ai import OpenAI
@@ -78,7 +78,7 @@ print(data_dict['name'])
 ## 🚀 Built-in Resiliency (Retries & Timeouts)
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Hosseinghorbani0/ask-ai/main/assets/resiliency.svg" alt="ask-ai resiliency banner" width="100%">
+  <img src="https://raw.githubusercontent.com/Hosseinghorbani0/askai-python/main/assets/resiliency.svg" alt="askai-python resiliency banner" width="100%">
 </p>
 
 Build reliable apps without writing your own loops. `askai-python` handles rate limits (`429`) and network drops via an internal exponential backoff.
@@ -121,6 +121,6 @@ response = ai.ask(
 
 ## 🔗 Important Links
 
-- **GitHub Repository**: [Hosseinghorbani0/ask-ai](https://github.com/Hosseinghorbani0/ask-ai) (Star us! ⭐)
+- **GitHub Repository**: [Hosseinghorbani0/askai-python](https://github.com/Hosseinghorbani0/askai-python) (Star us! ⭐)
 - **Official Website**: [hosseinghorbani0.ir](https://hosseinghorbani0.ir/)
-- **Bug Tracker**: [Report an Issue](https://github.com/Hosseinghorbani0/ask-ai/issues)
+- **Bug Tracker**: [Report an Issue](https://github.com/Hosseinghorbani0/askai-python/issues)

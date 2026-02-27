@@ -14,7 +14,7 @@
 
 
 <p align="center">
-  <img src="../assets/banner.svg" alt="ask-ai animated banner" width="100%">
+  <img src="../assets/banner.svg" alt="askai-python animated banner" width="100%">
 </p>
 
 <p align="center">
@@ -46,7 +46,7 @@ Groq().ask("سیاه‌چاله‌ها را مثل یک کودک ۵ ساله ت�
 
 ---
 
-## 🧐 چرا ask-ai؟
+## 🧐 چرا askai-python؟
 
 - **یک تابع ساده**: فقط کافیست `.ask()` را صدا بزنید.
 - **سرویس‌های متعدد**: پشتیبانی از OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter.
@@ -68,9 +68,9 @@ Groq().ask("سیاه‌چاله‌ها را مثل یک کودک ۵ ساله ت�
 ### 🧰 ابزارهای توسعه‌دهنده (Auto-Parsing)
 
 <p align="center">
-  <img src="../assets/features.svg" alt="ask-ai features parsing banner" width="100%">
+  <img src="../assets/features.svg" alt="askai-python features parsing banner" width="100%">
 </p>
-دیگر نیازی به نوشتن عبارت‌های باقاعده (Regex) برای تمیز کردن خروجی مدل‌ها ندارید! `ask-ai` پرچم‌های تمیزکاری داخلی دارد:
+دیگر نیازی به نوشتن عبارت‌های باقاعده (Regex) برای تمیز کردن خروجی مدل‌ها ندارید! `askai-python` پرچم‌های تمیزکاری داخلی دارد:
 
 ```python
 from ask_ai import OpenAI
@@ -93,7 +93,7 @@ print(data_dict['name'])
 ### 🔄 مقاومت داخلی (Retries & Timeout)
 
 <p align="center">
-  <img src="../assets/resiliency.svg" alt="ask-ai resiliency banner" width="100%">
+  <img src="../assets/resiliency.svg" alt="askai-python resiliency banner" width="100%">
 </p>
 مدیریت هوشمند خطاهای اینترنت و محدودیت‌های سرعت (`429`) با تکنیک تاخیر تصاعدی (Exponential Backoff):
 
@@ -132,6 +132,6 @@ print(ai.ask("How do I optimize a Dockerfile?").text)
 
 ## 🔗 لینک‌های مهم
 
-- **مخزن گیت‌هاب**: [Hosseinghorbani0/ask-ai](https://github.com/Hosseinghorbani0/ask-ai) (ستاره فراموش نشود! ⭐)
+- **مخزن گیت‌هاب**: [Hosseinghorbani0/askai-python](https://github.com/Hosseinghorbani0/askai-python) (ستاره فراموش نشود! ⭐)
 - **پکیج PyPI**: [askai-python](https://pypi.org/project/askai-python/)
 - **وب‌سایت رسمی**: [hosseinghorbani0.ir](https://hosseinghorbani0.ir/)

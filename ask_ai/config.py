@@ -1,5 +1,6 @@
 from typing import Optional, Dict, Any
 
+
 class AdvancedConfig:
     """
     Configuration class for advanced AI settings.
@@ -23,12 +24,12 @@ class AdvancedConfig:
         self.presence_penalty = presence_penalty
         self.stop = stop
         self.stop = stop
-        
+
         # Smart Aliases for 10/10 Usability
         # If user passes 'prompt' or 'system', treat it as 'system_message'
         if system_message is None:
             system_message = kwargs.get("prompt") or kwargs.get("system")
-        
+
         self.system_message = system_message
         self.safe_mode = safe_mode
         self.extra = kwargs
@@ -43,14 +44,14 @@ class AdvancedConfig:
         # Copy self
         for k, v in self.__dict__.items():
             setattr(new_config, k, v)
-        
+
         # Override with other
         for k, v in other_config.__dict__.items():
             if v is not None:
                 setattr(new_config, k, v)
-        
+
         return new_config
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'AdvancedConfig':
         return cls(**data)

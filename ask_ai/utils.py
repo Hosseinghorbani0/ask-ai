@@ -2,6 +2,7 @@ import re
 import json
 from typing import Dict, Any, Union
 
+
 def clean_markdown(text: str) -> str:
     """Removes markdown code blocks like ```json ... ```"""
     text = text.strip()
@@ -9,10 +10,11 @@ def clean_markdown(text: str) -> str:
         # find the first newline
         first_newline = text.find("\n")
         if first_newline != -1:
-            text = text[first_newline+1:]
+            text = text[first_newline + 1:]
         if text.endswith("```"):
             text = text[:-3]
     return text.strip()
+
 
 def extract_code(text: str) -> str:
     """Extracts code blocks from text, ignoring conversational filler."""
@@ -22,6 +24,7 @@ def extract_code(text: str) -> str:
         return "\n\n".join(m.strip() for m in matches)
     return text
 
+
 def strip_tags(text: str) -> str:
     """Removes XML/HTML tags, including <think>...</think> blocks."""
     # First remove <think>...</think> entirely if we don't want the thought process
@@ -29,6 +32,7 @@ def strip_tags(text: str) -> str:
     # Remove any other HTML tags
     text = re.sub(r'<[^>]+>', '', text)
     return text.strip()
+
 
 def parse_json(text: str) -> Union[Dict[str, Any], list]:
     """Tries to parse JSON from text, employing cleaning if necessary."""

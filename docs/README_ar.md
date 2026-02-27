@@ -14,7 +14,7 @@
 
 
 <p align="center">
-  <img src="../assets/banner.svg" alt="ask-ai animated banner" width="100%">
+  <img src="../assets/banner.svg" alt="askai-python animated banner" width="100%">
 </p>
 
 <p align="center" dir="rtl">
@@ -46,7 +46,7 @@ Groq().ask("اشرح الثقوب السوداء لطفل عمره 5 سنوات"
 
 ---
 
-## 🧐 لماذا ask-ai؟
+## 🧐 لماذا askai-python؟
 
 - **دالة واحدة**: فقط اتصل بـ `.ask()`.
 - **موفّرون متعددون**: دعم لـ OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter.
@@ -68,7 +68,7 @@ Groq().ask("اشرح الثقوب السوداء لطفل عمره 5 سنوات"
 ### 🧰 أدوات المطورين (Auto-Parsing)
 
 <p align="center">
-  <img src="../assets/features.svg" alt="ask-ai features parsing banner" width="100%">
+  <img src="../assets/features.svg" alt="askai-python features parsing banner" width="100%">
 </p>
 توقف عن كتابة تعبيرات برمجية (Regex) لتنظيف مخرجات النماذج! أدوات التنظيف مدمجة الآن:
 
@@ -93,7 +93,7 @@ print(data_dict['name'])
 ### 🔄 المحاولة التلقائية ومهلة الاتصال (Resiliency)
 
 <p align="center">
-  <img src="../assets/resiliency.svg" alt="ask-ai resiliency banner" width="100%">
+  <img src="../assets/resiliency.svg" alt="askai-python resiliency banner" width="100%">
 </p>
 يدير التوقفات وبطء الشبكة بذكاء مع تقنية التأخير التدريجي (Exponential Backoff):
 
@@ -118,6 +118,6 @@ print(ai.ask("كيف يمكنني تحسين ملف الـ Dockerfile؟").text)
 
 ## 🔗 الروابط المهمة
 
-- **مستودع جيت هاب**: [Hosseinghorbani0/ask-ai](https://github.com/Hosseinghorbani0/ask-ai) (لا تنسَ إضافة نجمة! ⭐)
+- **مستودع جيت هاب**: [Hosseinghorbani0/askai-python](https://github.com/Hosseinghorbani0/askai-python) (لا تنسَ إضافة نجمة! ⭐)
 - **حزمة PyPI**: [askai-python](https://pypi.org/project/askai-python/)
 - **الموقع الرسمي**: [hosseinghorbani0.ir](https://hosseinghorbani0.ir/)

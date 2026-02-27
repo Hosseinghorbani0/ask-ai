@@ -14,7 +14,7 @@
 
 
 <p align="center">
-  <img src="../assets/banner.svg" alt="ask-ai animated banner" width="100%">
+  <img src="../assets/banner.svg" alt="askai-python animated banner" width="100%">
 </p>
 
 <p align="center">
@@ -46,7 +46,7 @@ Groq().ask("像给5岁孩子一样解释黑洞").text
 
 ---
 
-## 🧐 为什么选择 ask-ai？
+## 🧐 为什么选择 askai-python？
 
 - **一个函数**: 只需调用 `.ask()`
 - **多个供应商**: OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter
@@ -68,7 +68,7 @@ Groq().ask("像给5岁孩子一样解释黑洞").text
 ### 🧰 开发者实用工具 (Auto-Parsing)
 
 <p align="center">
-  <img src="../assets/features.svg" alt="ask-ai features parsing banner" width="100%">
+  <img src="../assets/features.svg" alt="askai-python features parsing banner" width="100%">
 </p>
 内置文本处理工具，告别手写 Regex！
 
@@ -93,7 +93,7 @@ print(data_dict['name'])
 ### 🔄 内置重试和超时 (弹性)
 
 <p align="center">
-  <img src="../assets/resiliency.svg" alt="ask-ai resiliency banner" width="100%">
+  <img src="../assets/resiliency.svg" alt="askai-python resiliency banner" width="100%">
 </p>
 自动处理速率限制 (`429`) 和网络中断：
 
@@ -118,6 +118,6 @@ print(ai.ask("我该如何优化 Dockerfile？").text)
 
 ## 🔗 重要链接
 
-- **GitHub 仓库**: [Hosseinghorbani0/ask-ai](https://github.com/Hosseinghorbani0/ask-ai) (请给我们点亮星星 ⭐)
+- **GitHub 仓库**: [Hosseinghorbani0/askai-python](https://github.com/Hosseinghorbani0/askai-python) (请给我们点亮星星 ⭐)
 - **PyPI**: [askai-python](https://pypi.org/project/askai-python/)
 - **官方网站**: [hosseinghorbani0.ir](https://hosseinghorbani0.ir/)
