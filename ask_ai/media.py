@@ -1,11 +1,13 @@
 import os
-from PIL import Image
-from io import BytesIO
 import platform
 import subprocess
+import tempfile
+from typing import Optional
 
 
 class MediaObject:
+    """Base class for media objects (image, audio)."""
+
     def __init__(self, data: bytes, media_type: str):
         self.data = data
         self.type = media_type
@@ -14,52 +16,75 @@ class MediaObject:
     def bytes(self) -> bytes:
         return self.data
 
+    def __len__(self) -> int:
+        return len(self.data)
+
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} size={len(self.data)} bytes>"
+
 
 class ImageObject(MediaObject):
+    """Represents a generated image."""
+
     def __init__(self, data: bytes):
         super().__init__(data, "image")
 
-    def save(self, path: str):
+    def save(self, path: str) -> None:
         """Save the image to a file."""
         with open(path, "wb") as f:
             f.write(self.data)
-        print(f"Image saved to {path}")
 
-    def show(self):
+    def show(self) -> None:
         """Display the image using the default OS viewer."""
         try:
+            from PIL import Image
+            from io import BytesIO
             image = Image.open(BytesIO(self.data))
             image.show()
+        except ImportError:
+            # Fallback: save to temp and open with OS
+            self._open_with_os(".png")
         except Exception as e:
-            print(f"Error showing image: {e}")
+            raise RuntimeError(f"Error showing image: {e}") from e
+
+    def _open_with_os(self, suffix: str) -> None:
+        """Open a temp file with the OS default handler."""
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+            f.write(self.data)
+            temp_path = f.name
+        _open_file(temp_path)
 
 
 class AudioObject(MediaObject):
-    def __init__(self, data: bytes):
-        super().__init__(data, "audio")
+    """Represents generated audio."""
 
-    def save(self, path: str):
+    def __init__(self, data: bytes, format: str = "mp3"):
+        super().__init__(data, "audio")
+        self.format = format
+
+    def save(self, path: str) -> None:
         """Save the audio to a file."""
         with open(path, "wb") as f:
             f.write(self.data)
-        print(f"Audio saved to {path}")
 
-    def play(self):
+    def play(self) -> None:
         """Play the audio using the default OS player."""
-        # Simple cross-platform play attempt
-        import tempfile
-
-        # Save to temp file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
+        suffix = f".{self.format}"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
             f.write(self.data)
             temp_path = f.name
+        _open_file(temp_path)
 
-        try:
-            if platform.system() == "Windows":
-                os.startfile(temp_path)
-            elif platform.system() == "Darwin":
-                subprocess.call(["open", temp_path])
-            else:
-                subprocess.call(["xdg-open", temp_path])
-        except Exception as e:
-            print(f"Error playing audio: {e}")
+
+def _open_file(path: str) -> None:
+    """Cross-platform file opener."""
+    try:
+        system = platform.system()
+        if system == "Windows":
+            os.startfile(path)
+        elif system == "Darwin":
+            subprocess.Popen(["open", path])
+        else:
+            subprocess.Popen(["xdg-open", path])
+    except Exception as e:
+        raise RuntimeError(f"Could not open file '{path}': {e}") from e

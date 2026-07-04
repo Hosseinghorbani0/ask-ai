@@ -4,26 +4,57 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "askai-python"
-version = "0.3.3"
-description = "AI Made Stupid Simple. Unified API for OpenAI, Groq, Google, and more."
+version = "0.4.0"
+description = "AI Made Stupid Simple. Unified API for OpenAI, Groq, Google, Anthropic, and more."
 readme = "docs/PYPI_README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
   {name = "Hossein Ghorbani", email = "hosseingh1068@gmail.com"}
 ]
-dependencies = [
-  "openai>=1.0.0",
-  "groq",
-  "google-generativeai",
-  "anthropic",
-  "requests",
-  "Pillow"
+keywords = ["ai", "llm", "openai", "anthropic", "gemini", "groq", "sdk", "api"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Typing :: Typed",
 ]
 
+# Core dependencies — minimal
+dependencies = []
+
+[project.optional-dependencies]
+openai = ["openai>=1.0.0"]
+anthropic = ["anthropic>=0.20.0"]
+google = ["google-generativeai>=0.5.0"]
+groq = ["groq>=0.4.0"]
+media = ["Pillow>=9.0.0"]
+httpx = ["httpx>=0.24.0"]
+all = [
+  "openai>=1.0.0",
+  "anthropic>=0.20.0",
+  "google-generativeai>=0.5.0",
+  "groq>=0.4.0",
+  "Pillow>=9.0.0",
+  "httpx>=0.24.0",
+]
+
+[project.scripts]
+ask-ai = "ask_ai.cli:main"
+
 [project.urls]
-"Homepage" = "https://hosseinghorbani0.ir/"
+"Homepage" = "https://github.com/Hosseinghorbani0/ask-ai"
+"Documentation" = "https://github.com/Hosseinghorbani0/ask-ai#readme"
 "Bug Tracker" = "https://github.com/Hosseinghorbani0/ask-ai/issues"
+"Changelog" = "https://github.com/Hosseinghorbani0/ask-ai/releases"
 
 [tool.setuptools.packages.find]
 include = ["ask_ai*"]
@@ -31,3 +62,22 @@ exclude = ["assets*", "docs*", "tests*", ".gemini*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.txt", "*.md"]
+
+# ─── Ruff (Linter + Formatter) ─────────────────────────────
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ask_ai"]
+
+# ─── Pytest ────────────────────────────────────────────────
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -33,5 +33,10 @@ class AskAIParsingError(AskAIError):
     pass
 
 
-# Alias for backwards compatibility internally
+class StreamNotSupportedError(AskAIError):
+    """Raised when streaming is requested but the provider doesn't support it."""
+    pass
+
+
+# Alias for backwards compatibility
 APIKeyError = AskAIConfigError

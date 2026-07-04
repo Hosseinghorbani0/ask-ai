@@ -1,12 +1,19 @@
-from typing import Union, List, Dict, Any
 import os
+import time
+import random
+import asyncio
+import logging
+from typing import Union, List, Dict, Any, Iterator, AsyncIterator
+
 from .config import AdvancedConfig
 from .media import ImageObject, AudioObject
+
+logger = logging.getLogger("ask_ai")
 
 
 class Response:
     """
-    Unified response object for all easyai requests.
+    Unified response object for all ask-ai requests.
     """
     def __init__(self, text: str = "", media: Union[ImageObject, AudioObject, None] = None, **kwargs):
         self._raw_text = text
@@ -33,17 +40,20 @@ class Response:
         from .utils import parse_json
         return parse_json(self._raw_text)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.text
 
-    def save(self, path: str):
+    def __repr__(self) -> str:
+        preview = self._raw_text[:80] + "..." if len(self._raw_text) > 80 else self._raw_text
+        return f'<Response text="{preview}">'
+
+    def save(self, path: str) -> None:
         """Smart save based on content type."""
         if self.media:
             self.media.save(path)
         else:
             with open(path, "w", encoding="utf-8") as f:
                 f.write(self.text)
-            print(f"Text saved to {path}")
 
 
 class BaseProvider:
@@ -52,17 +62,10 @@ class BaseProvider:
     Implements the core 'ask' logic and configuration management.
     """
     def __init__(self, api_key: str = None, model: str = None, persona: str = None, **kwargs):
-        # 1. Zero-Config: Try env var if key not provided
+        # Zero-Config: Try env var if key not provided
         self.api_key = api_key or os.environ.get(self._get_api_key_env_var())
-        if not self.api_key:
-            # Some providers might not need it (e.g. local), but generally they do.
-            # We allow subclass to handle granular validation, but warn here.
-            pass
-
         self.model = model or self._get_default_model()
         self.persona = persona
-
-        # Global Advanced Config
         self.config = AdvancedConfig(**kwargs)
 
     def _get_api_key_env_var(self) -> str:
@@ -73,105 +76,84 @@ class BaseProvider:
         """Subclasses should return a default model"""
         raise NotImplementedError
 
-    def advanced(self, **kwargs):
+    def advanced(self, **kwargs) -> None:
         """
         Update global advanced settings for this instance.
         Merges new settings with existing ones.
         """
         new_conf = AdvancedConfig(**kwargs)
-        # primitive merge: update self.config with new values
         for k, v in new_conf.__dict__.items():
+            if k == 'extra':
+                continue
             if v is not None:
                 setattr(self.config, k, v)
-
-        # Handle extra kwargs
         if new_conf.extra:
             self.config.extra.update(new_conf.extra)
 
+    # ─── Sync API ───────────────────────────────────────────
+
     def ask(self, query: str, **kwargs) -> Response:
         """
-        The main entry point.
+        The main entry point. Sync version.
         Detects intent, manages config, and returns a unified Response.
         """
-        # 1. Merge Request Config with Global Config
-        request_config = AdvancedConfig(**kwargs)
-        final_config = self._merge_configs(self.config, request_config)
-
-        # 2. Add System/Persona Message
+        final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
-
-        # 3. Check for specific output_type override (e.g. user forced image)
         output_type = kwargs.get('output_type')
+        retry = int(kwargs.get('retry', final_config.extra.get('retry', 0)) or 0)
 
-        # 4. Extract timeout and retry safely
-        timeout_val = kwargs.get('timeout', final_config.extra.get('timeout', 30))
-        retry_val = kwargs.get('retry', final_config.extra.get('retry', 0))
+        return self._execute_with_retry(
+            self._send_request, messages, final_config, output_type, retry
+        )
 
-        timeout = float(timeout_val) if timeout_val is not None else 30.0
-        retry = int(retry_val) if retry_val is not None else 0
+    def ask_stream(self, query: str, **kwargs) -> Iterator[str]:
+        """
+        Streaming text generation. Yields text chunks.
+        """
+        final_config = self._build_final_config(kwargs)
+        messages = self._prepare_messages(query, final_config)
+        yield from self._send_request_stream(messages, final_config)
 
-        final_config.extra['timeout'] = timeout  # Pass down to providers
-
-        # 5. Execute with Retry Logic
-        attempts = 0
-        last_error = None
-        while attempts <= retry:
-            try:
-                response = self._send_request(messages, final_config, output_type)
-                # Attach parsing arguments to the response object dynamically
-                response._kwargs.update(kwargs)
-                return response
-            except Exception as e:
-                last_error = e
-                if self._is_retryable_error(e) and attempts < retry:
-                    attempts += 1
-                    delay = 2 ** attempts  # 2s, 4s, 8s...
-                    print(f"[ask-ai] Transient error ({e.__class__.__name__}). Retrying in {delay}s... ({attempts}/{retry})")
-                    import time
-                    time.sleep(delay)
-                else:
-                    raise e
-
-        # Fallback if loop exits without returning
-        from .exceptions import AskAINetworkError
-        raise AskAINetworkError(f"Request failed after {retry} retries. Last error: {last_error}")
+    # ─── Async API ──────────────────────────────────────────
 
     async def ask_async(self, query: str, **kwargs) -> Response:
         """
-        Asynchronous wrapper for the .ask() method.
-        Perfect for Telegram bots (Aiogram) and FastAPI.
+        Native async version of ask().
+        Uses provider's async client directly — no thread pool wrapping.
         """
-        import asyncio
-        loop = asyncio.get_event_loop()
+        final_config = self._build_final_config(kwargs)
+        messages = self._prepare_messages(query, final_config)
+        output_type = kwargs.get('output_type')
+        retry = int(kwargs.get('retry', final_config.extra.get('retry', 0)) or 0)
 
-        def _sync_ask():
-            return self.ask(query, **kwargs)
-        return await loop.run_in_executor(None, _sync_ask)
+        return await self._execute_with_retry_async(
+            self._send_request_async, messages, final_config, output_type, retry
+        )
 
-    def _is_retryable_error(self, e: Exception) -> bool:
-        """Dynamically detect rate limits and network timeouts across different provider SDKs."""
-        err_str = str(e).lower()
-        err_cls = e.__class__.__name__.lower()
+    async def ask_stream_async(self, query: str, **kwargs) -> AsyncIterator[str]:
+        """
+        Async streaming text generation. Yields text chunks.
+        """
+        final_config = self._build_final_config(kwargs)
+        messages = self._prepare_messages(query, final_config)
+        async for chunk in self._send_request_stream_async(messages, final_config):
+            yield chunk
 
-        # Explicit ask-ai errors
-        from .exceptions import AskAINetworkError, AskAIRateLimitError
-        if isinstance(e, (AskAINetworkError, AskAIRateLimitError)):
-            return True
+    # ─── Config Helpers ─────────────────────────────────────
 
-        # Heuristics for underlying provider SDKs (OpenAI, Anthropic, etc.)
-        if "ratelimit" in err_cls or "rate_limit" in err_cls or "429" in err_str:
-            return True
-        if "timeout" in err_cls or "timeout" in err_str:
-            return True
-        if "connection" in err_cls or "connecterror" in err_cls:
-            return True
+    def _build_final_config(self, kwargs: Dict[str, Any]) -> AdvancedConfig:
+        """Build final config by merging global config with per-request kwargs."""
+        request_config = AdvancedConfig(**kwargs)
+        final_config = self.config.merge(request_config)
 
-        return False
+        # Ensure timeout has a default
+        timeout = kwargs.get('timeout', final_config.extra.get('timeout', 30))
+        final_config.extra['timeout'] = float(timeout) if timeout is not None else 30.0
 
-    def _merge_configs(self, global_conf: AdvancedConfig, req_conf: AdvancedConfig) -> AdvancedConfig:
-        return global_conf.merge(req_conf)  # We need to implement merge logic in AdvancedConfig properly or here
+        return final_config
 
     def _prepare_messages(self, query: str, config: AdvancedConfig) -> List[Dict[str, str]]:
+        """Build the messages list from query, persona, and config."""
         messages = []
 
         system_msg = config.system_message or self.persona or ""
@@ -187,11 +169,96 @@ class BaseProvider:
         messages.append({"role": "user", "content": query})
         return messages
 
+    # ─── Retry Logic ────────────────────────────────────────
+
+    def _execute_with_retry(self, func, messages, config, output_type, retry):
+        """Execute a sync function with exponential backoff + jitter."""
+        attempts = 0
+        last_error = None
+
+        while attempts <= retry:
+            try:
+                response = func(messages, config, output_type)
+                return response
+            except Exception as e:
+                last_error = e
+                if self._is_retryable_error(e) and attempts < retry:
+                    attempts += 1
+                    delay = min(2 ** attempts + random.uniform(0, 1), 30)
+                    logger.warning(
+                        "Transient error (%s). Retrying in %.1fs... (%d/%d)",
+                        e.__class__.__name__, delay, attempts, retry
+                    )
+                    time.sleep(delay)
+                else:
+                    raise
+
+        from .exceptions import AskAINetworkError
+        raise AskAINetworkError(f"Request failed after {retry} retries. Last error: {last_error}")
+
+    async def _execute_with_retry_async(self, func, messages, config, output_type, retry):
+        """Execute an async function with exponential backoff + jitter."""
+        attempts = 0
+        last_error = None
+
+        while attempts <= retry:
+            try:
+                response = await func(messages, config, output_type)
+                return response
+            except Exception as e:
+                last_error = e
+                if self._is_retryable_error(e) and attempts < retry:
+                    attempts += 1
+                    delay = min(2 ** attempts + random.uniform(0, 1), 30)
+                    logger.warning(
+                        "Transient error (%s). Retrying in %.1fs... (%d/%d)",
+                        e.__class__.__name__, delay, attempts, retry
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    raise
+
+        from .exceptions import AskAINetworkError
+        raise AskAINetworkError(f"Request failed after {retry} retries. Last error: {last_error}")
+
+    def _is_retryable_error(self, e: Exception) -> bool:
+        """Dynamically detect rate limits and network timeouts across different provider SDKs."""
+        from .exceptions import AskAINetworkError, AskAIRateLimitError
+        if isinstance(e, (AskAINetworkError, AskAIRateLimitError)):
+            return True
+
+        err_str = str(e).lower()
+        err_cls = e.__class__.__name__.lower()
+
+        retryable_indicators = ("ratelimit", "rate_limit", "429", "timeout", "connection", "connecterror")
+        return any(indicator in err_cls or indicator in err_str for indicator in retryable_indicators)
+
+    # ─── Abstract Methods (Subclasses Must Implement) ──────
+
     def _send_request(self, messages: List[Dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
-        """Subclasses must implement this."""
+        """Sync request — subclasses must implement."""
         raise NotImplementedError
 
-    # --- Tool Definitions for Smart Intent ---
+    async def _send_request_async(self, messages: List[Dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
+        """Async request — subclasses should override for native async."""
+        # Default fallback: run sync in thread pool
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._send_request, messages, config, output_type)
+
+    def _send_request_stream(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> Iterator[str]:
+        """Sync streaming — subclasses should override."""
+        from .exceptions import StreamNotSupportedError
+        raise StreamNotSupportedError(f"{self.__class__.__name__} does not support streaming.")
+
+    async def _send_request_stream_async(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> AsyncIterator[str]:
+        """Async streaming — subclasses should override for native async."""
+        # Default fallback: wrap sync stream
+        loop = asyncio.get_running_loop()
+        for chunk in await loop.run_in_executor(None, lambda: list(self._send_request_stream(messages, config))):
+            yield chunk
+
+    # ─── Tool Definitions for Smart Intent ─────────────────
+
     def _get_media_tools(self) -> List[Dict[str, Any]]:
         return [
             {
