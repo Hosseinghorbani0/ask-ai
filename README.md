@@ -150,9 +150,9 @@ asyncio.run(main())
 - [x] Text to Image (DALL-E) and Text to Audio
 - [x] Automated Retry & Timeout controls
 - [x] Async Support (`await ask_async`)
-- [ ] Provider Fallback (`ask(..., providers=[OpenAI, Groq])`)
-- [ ] Streaming Support (`ask_stream`)
-- [ ] Structured Output (Pydantic Support)
+- [x] Provider Fallback (`ask(..., providers=[OpenAI, Groq])`)
+- [x] Streaming Support (`ask_stream`)
+- [x] Structured Output (Pydantic Support)
 
 ---
 
