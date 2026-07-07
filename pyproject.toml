@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "askai-python"
-version = "0.4.0"
+version = "0.4.1"
 description = "AI Made Stupid Simple. Unified API for OpenAI, Groq, Google, Anthropic, and more."
 readme = "docs/PYPI_README.md"
 requires-python = ">=3.9"

@@ -15,9 +15,10 @@ class Response:
     """
     Unified response object for all ask-ai requests.
     """
-    def __init__(self, text: str = "", media: Union[ImageObject, AudioObject, None] = None, **kwargs):
+    def __init__(self, text: str = "", media: Union[ImageObject, AudioObject, None] = None, response_model: Any = None, **kwargs):
         self._raw_text = text
         self.media = media
+        self.response_model = response_model
         self._kwargs = kwargs
 
     @property
@@ -39,6 +40,25 @@ class Response:
         """Returns parsed JSON. If 'json=True' was passed, this is highly reliable."""
         from .utils import parse_json
         return parse_json(self._raw_text)
+
+    @property
+    def pydantic(self) -> Any:
+        """Returns parsed Pydantic model instance if response_model was provided."""
+        if not self.response_model:
+            raise ValueError("No response_model was specified for this request.")
+        return self.to_model(self.response_model)
+
+    def to_model(self, model_class: Any) -> Any:
+        """Parse the response text into a specified Pydantic model."""
+        text_content = self.text
+        if hasattr(model_class, "model_validate_json"):
+            return model_class.model_validate_json(text_content)
+        elif hasattr(model_class, "parse_raw"):
+            return model_class.parse_raw(text_content)
+        else:
+            import json
+            data = json.loads(text_content)
+            return model_class(**data)
 
     def __str__(self) -> str:
         return self.text
@@ -97,19 +117,68 @@ class BaseProvider:
         The main entry point. Sync version.
         Detects intent, manages config, and returns a unified Response.
         """
+        providers = kwargs.pop("providers", None) or kwargs.pop("fallback", None)
+        if providers:
+            if not isinstance(providers, (list, tuple)):
+                providers = [providers]
+            errors = []
+            for p in providers:
+                if isinstance(p, type):
+                    try:
+                        p_inst = p()
+                    except Exception as e:
+                        errors.append(f"{p.__name__} init failed: {e}")
+                        continue
+                else:
+                    p_inst = p
+                try:
+                    return p_inst.ask(query, **kwargs)
+                except Exception as e:
+                    errors.append(f"{p_inst.__class__.__name__}: {e}")
+                    logger.warning("Provider fallback failed for %s: %s", p_inst.__class__.__name__, e)
+            from .exceptions import ProviderError
+            raise ProviderError(f"All fallback providers failed: {errors}")
+
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
         output_type = kwargs.get('output_type')
         retry = int(kwargs.get('retry', final_config.extra.get('retry', 0)) or 0)
+        response_model = kwargs.get('response_model')
 
-        return self._execute_with_retry(
+        response = self._execute_with_retry(
             self._send_request, messages, final_config, output_type, retry
         )
+        if response_model:
+            response.response_model = response_model
+        return response
 
     def ask_stream(self, query: str, **kwargs) -> Iterator[str]:
         """
         Streaming text generation. Yields text chunks.
         """
+        providers = kwargs.pop("providers", None) or kwargs.pop("fallback", None)
+        if providers:
+            if not isinstance(providers, (list, tuple)):
+                providers = [providers]
+            errors = []
+            for p in providers:
+                if isinstance(p, type):
+                    try:
+                        p_inst = p()
+                    except Exception as e:
+                        errors.append(f"{p.__name__} init failed: {e}")
+                        continue
+                else:
+                    p_inst = p
+                try:
+                    yield from p_inst.ask_stream(query, **kwargs)
+                    return
+                except Exception as e:
+                    errors.append(f"{p_inst.__class__.__name__}: {e}")
+                    logger.warning("Provider fallback failed for %s: %s", p_inst.__class__.__name__, e)
+            from .exceptions import ProviderError
+            raise ProviderError(f"All fallback providers failed: {errors}")
+
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
         yield from self._send_request_stream(messages, final_config)
@@ -121,19 +190,69 @@ class BaseProvider:
         Native async version of ask().
         Uses provider's async client directly — no thread pool wrapping.
         """
+        providers = kwargs.pop("providers", None) or kwargs.pop("fallback", None)
+        if providers:
+            if not isinstance(providers, (list, tuple)):
+                providers = [providers]
+            errors = []
+            for p in providers:
+                if isinstance(p, type):
+                    try:
+                        p_inst = p()
+                    except Exception as e:
+                        errors.append(f"{p.__name__} init failed: {e}")
+                        continue
+                else:
+                    p_inst = p
+                try:
+                    return await p_inst.ask_async(query, **kwargs)
+                except Exception as e:
+                    errors.append(f"{p_inst.__class__.__name__}: {e}")
+                    logger.warning("Provider fallback failed for %s: %s", p_inst.__class__.__name__, e)
+            from .exceptions import ProviderError
+            raise ProviderError(f"All fallback providers failed: {errors}")
+
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
         output_type = kwargs.get('output_type')
         retry = int(kwargs.get('retry', final_config.extra.get('retry', 0)) or 0)
+        response_model = kwargs.get('response_model')
 
-        return await self._execute_with_retry_async(
+        response = await self._execute_with_retry_async(
             self._send_request_async, messages, final_config, output_type, retry
         )
+        if response_model:
+            response.response_model = response_model
+        return response
 
     async def ask_stream_async(self, query: str, **kwargs) -> AsyncIterator[str]:
         """
         Async streaming text generation. Yields text chunks.
         """
+        providers = kwargs.pop("providers", None) or kwargs.pop("fallback", None)
+        if providers:
+            if not isinstance(providers, (list, tuple)):
+                providers = [providers]
+            errors = []
+            for p in providers:
+                if isinstance(p, type):
+                    try:
+                        p_inst = p()
+                    except Exception as e:
+                        errors.append(f"{p.__name__} init failed: {e}")
+                        continue
+                else:
+                    p_inst = p
+                try:
+                    async for chunk in await p_inst.ask_stream_async(query, **kwargs):
+                        yield chunk
+                    return
+                except Exception as e:
+                    errors.append(f"{p_inst.__class__.__name__}: {e}")
+                    logger.warning("Provider fallback failed for %s: %s", p_inst.__class__.__name__, e)
+            from .exceptions import ProviderError
+            raise ProviderError(f"All fallback providers failed: {errors}")
+
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
         async for chunk in self._send_request_stream_async(messages, final_config):
@@ -158,8 +277,31 @@ class BaseProvider:
 
         system_msg = config.system_message or self.persona or ""
 
-        # Smart capability: if json=True, enforce JSON system prompt
-        if config.extra.get('json'):
+        # Smart capability: if json=True or response_model is specified
+        response_model = config.extra.get('response_model')
+        if response_model:
+            if hasattr(response_model, "model_json_schema"):
+                schema = response_model.model_json_schema()
+            elif hasattr(response_model, "schema"):
+                schema = response_model.schema()
+            else:
+                schema = None
+
+            if schema:
+                import json
+                schema_str = json.dumps(schema)
+                json_instruction = (
+                    f"You must respond with valid JSON matching the following JSON schema:\n"
+                    f"{schema_str}\n"
+                    f"Do not include any markdown markup, explanation, or HTML tags."
+                )
+            else:
+                json_instruction = "You must respond with valid JSON only."
+
+            system_msg = f"{system_msg}\n{json_instruction}".strip()
+            config.extra['json'] = True
+
+        elif config.extra.get('json'):
             json_instruction = "You must respond with valid JSON only, without any markdown formatting or tags."
             system_msg = f"{system_msg}\n{json_instruction}".strip()
 

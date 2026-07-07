@@ -54,13 +54,70 @@ class OpenRouterProvider(OpenAIProvider):
         return []
 
     def _generate_image(self, messages, config):
-        raise ProviderError("OpenRouter does not support Image Generation via this library.")
+        prompt = messages[-1]["content"]
+        try:
+            import httpx
+        except ImportError:
+            raise ProviderError("httpx client library is required for OpenRouter Image Generation. Run: pip install httpx")
+        
+        from ..media import ImageObject
+        from .openai_provider import _download_bytes
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": self.model,
+            "prompt": prompt
+        }
+        try:
+            response = httpx.post("https://openrouter.ai/api/v1/images", json=payload, headers=headers, timeout=60.0)
+            response.raise_for_status()
+            data = response.json()
+            image_url = data["data"][0]["url"]
+            img_data = _download_bytes(image_url)
+            return Response(
+                text=f"Generated image via OpenRouter ({self.model}) for: {prompt}",
+                media=ImageObject(img_data)
+            )
+        except Exception as e:
+            raise ProviderError(f"OpenRouter Image Generation Error: {e}") from e
+
+    async def _generate_image_async(self, messages, config):
+        prompt = messages[-1]["content"]
+        try:
+            import httpx
+        except ImportError:
+            raise ProviderError("httpx client library is required for OpenRouter Image Generation. Run: pip install httpx")
+
+        from ..media import ImageObject
+        from .openai_provider import _download_bytes_async
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": self.model,
+            "prompt": prompt
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post("https://openrouter.ai/api/v1/images", json=payload, headers=headers, timeout=60.0)
+                response.raise_for_status()
+                data = response.json()
+            image_url = data["data"][0]["url"]
+            img_data = await _download_bytes_async(image_url)
+            return Response(
+                text=f"Generated image via OpenRouter ({self.model}) for: {prompt}",
+                media=ImageObject(img_data)
+            )
+        except Exception as e:
+            raise ProviderError(f"OpenRouter Image Generation Error: {e}") from e
 
     def _generate_audio(self, messages, config):
         raise ProviderError("OpenRouter does not support Audio Generation via this library.")
-
-    async def _generate_image_async(self, messages, config):
-        raise ProviderError("OpenRouter does not support Image Generation via this library.")
 
     async def _generate_audio_async(self, messages, config):
         raise ProviderError("OpenRouter does not support Audio Generation via this library.")

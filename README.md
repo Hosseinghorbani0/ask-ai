@@ -24,7 +24,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/askai-python.svg)](https://pypi.org/project/askai-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
 
 
@@ -144,15 +144,101 @@ asyncio.run(main())
 
 ---
 
+### 🌊 Streaming Support (Sync & Async)
+
+Stream responses token-by-token easily:
+
+```python
+from ask_ai import OpenAI
+
+ai = OpenAI()
+
+# Sync Streaming
+for chunk in ai.ask_stream("Write a short story about a blue dragon"):
+    print(chunk, end="", flush=True)
+
+# Async Streaming
+async def stream_example():
+    async for chunk in await ai.ask_stream_async("Write a short story"):
+        print(chunk, end="", flush=True)
+```
+
+---
+
+### 🎨 Media Generation (Image & Audio)
+
+Generate images or speech with compatible providers:
+
+```python
+from ask_ai import OpenAI
+
+ai = OpenAI()
+
+# Generate an Image (DALL-E)
+img_response = ai.ask("A majestic lion in a neon city", output_type="image")
+img_response.save("lion.png")
+
+# Generate Speech (TTS)
+audio_response = ai.ask("Hello, this is a generated voice.", output_type="audio")
+audio_response.save("welcome.mp3")
+```
+
+---
+
+### 🔗 Provider Fallback
+
+Never experience downtime by supplying alternative fallback providers:
+
+```python
+from ask_ai import OpenAI, Groq
+
+ai = OpenAI()
+
+# If OpenAI fails or rate-limits, it automatically switches to Groq
+response = ai.ask("Explain quantum physics", providers=[ai, Groq])
+print(response.text)
+```
+
+---
+
+### 📋 Structured Output (Pydantic Support)
+
+Force LLMs to strictly respond matching a Pydantic schema:
+
+```python
+from pydantic import BaseModel
+from ask_ai import OpenAI
+
+class User(BaseModel):
+    name: str
+    age: int
+
+ai = OpenAI()
+response = ai.ask("Extract name: Alice is 30 years old.", response_model=User)
+
+user = response.pydantic
+print(user.name)  # "Alice"
+print(user.age)   # 30
+```
+
+---
+
 ## 🗺️ Roadmap
 
-- [x] OpenAI, Groq, Gemini, Anthropic, Azure, OpenRouter support
-- [x] Text to Image (DALL-E) and Text to Audio
-- [x] Automated Retry & Timeout controls
-- [x] Async Support (`await ask_async`)
-- [ ] Provider Fallback (`ask(..., providers=[OpenAI, Groq])`)
-- [ ] Streaming Support (`ask_stream`)
-- [ ] Structured Output (Pydantic Support)
+### 🚀 Roadmap 2.0 (Active)
+- [x] Provider Fallback chaining & Pydantic Structured Output support
+- [ ] Multi-Modal Vision input (image to text) for all key providers
+- [ ] Native support for tools/function calling execution
+- [ ] Memory buffer / session-based conversation management
+
+### 🏁 Roadmap 1.0 (Completed)
+- ~~[x] OpenAI, Groq, Gemini, Anthropic, Azure, OpenRouter support~~
+- ~~[x] Text to Image (DALL-E) and Text to Audio~~
+- ~~[x] Automated Retry & Timeout controls~~
+- ~~[x] Async Support (`await ask_async`)~~
+- ~~[x] Streaming Support (`ask_stream` / `ask_stream_async`)~~
+- ~~[x] Provider Fallback (`ask(..., providers=[OpenAI, Groq])`)~~
+- ~~[x] Structured Output (Pydantic Support)~~
 
 ---
 
