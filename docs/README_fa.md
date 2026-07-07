@@ -119,14 +119,79 @@ print(ai.ask("How do I optimize a Dockerfile?").text)
 
 ---
 
+### 🎨 تولید رسانه (عکس و صوت)
+
+تولید تصویر یا تبدیل متن به گفتار با سرویس‌دهنده‌های سازگار:
+
+```python
+from ask_ai import OpenAI
+
+ai = OpenAI()
+
+# تولید عکس با استفاده از DALL-E
+img_response = ai.ask("A majestic lion in a neon city", output_type="image")
+img_response.save("lion.png")
+
+# تبدیل متن به گفتار
+audio_response = ai.ask("Hello, this is a voice.", output_type="audio")
+audio_response.save("welcome.mp3")
+```
+
+---
+
+### 🔗 زنجیره‌سازی سرویس‌های جایگزین (Fallback)
+
+جلوگیری از قطع شدن برنامه با تعریف سرویس‌دهنده‌های جایگزین:
+
+```python
+from ask_ai import OpenAI, Groq
+
+ai = OpenAI()
+
+# در صورت عدم کارکرد یا محدودیت سرعت OpenAI، به طور خودکار به Groq منتقل می‌شود
+response = ai.ask("Explain quantum physics", providers=[ai, Groq])
+print(response.text)
+```
+
+---
+
+### 📋 خروجی ساختاریافته (پشتیبانی از Pydantic)
+
+مجبور کردن مدل به پاسخ‌دهی کاملاً منطبق بر ساختار Pydantic:
+
+```python
+from pydantic import BaseModel
+from ask_ai import OpenAI
+
+class User(BaseModel):
+    name: str
+    age: int
+
+ai = OpenAI()
+response = ai.ask("Extract name: Alice is 30.", response_model=User)
+
+user = response.pydantic
+print(user.name)  # "Alice"
+print(user.age)   # 30
+```
+
+---
+
 ## 🗺️ نقشه راه (Roadmap)
 
-- [x] پشتیبانی از سرویس‌دهنده‌های برتر
-- [x] تبدیل متن به عکس و صوت
-- [x] کنترل‌کننده‌های داخلی سعی مجدد و Timeout
-- [x] ابزارهای استخراج خودکار کد و جیسون (Developer QoL)
-- [ ] توابع حالت غیرهمزمان (`await ask_async`)
-- [ ] لیست سرویس‌های جایگزین (`ask(..., providers=[OpenAI, Groq])`)
+### 🚀 نقشه راه 2.0 (فعال)
+- [x] زنجیره‌سازی آدرس‌های جایگزین (Fallback) و خروجی ساختاریافته Pydantic
+- [ ] دریافت ورودی چندرسانه‌ای (تصویر به متن) برای همه سرویس‌دهنده‌های اصلی
+- [ ] پشتیبانی بومی از ابزارها و اجرای توابع (Function Calling)
+- [ ] مدیریت تاریخچه گفتگو و حافظه نشست‌ها
+
+### 🏁 نقشه راه 1.0 (تکمیل شده)
+- ~~[x] پشتیبانی از سرویس‌دهنده‌های برتر~~
+- ~~[x] تبدیل متن به عکس و صوت~~
+- ~~[x] کنترل‌کننده‌های داخلی سعی مجدد و Timeout~~
+- ~~[x] ابزارهای استخراج خودکار کد و جیسون (Developer QoL)~~
+- ~~[x] توابع حالت غیرهمزمان (`await ask_async`)~~
+- ~~[x] لیست سرویس‌های جایگزین (`ask(..., providers=[OpenAI, Groq])`)~~
 
 ---
 

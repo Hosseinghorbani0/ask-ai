@@ -96,6 +96,54 @@ response = ai.ask(
 )
 ```
 
+## 🎨 Media Generation (Image & Audio)
+
+Generate images or speech with compatible providers:
+
+```python
+from ask_ai import OpenAI
+
+ai = OpenAI()
+
+# Generate an Image (DALL-E)
+img_response = ai.ask("A majestic lion in a neon city", output_type="image")
+img_response.save("lion.png")
+
+# Generate Speech (TTS)
+audio_response = ai.ask("Hello, this is a voice.", output_type="audio")
+audio_response.save("welcome.mp3")
+```
+
+## 🔗 Provider Fallback
+
+Never experience downtime by supplying fallback providers:
+
+```python
+from ask_ai import OpenAI, Groq
+
+ai = OpenAI()
+response = ai.ask("Explain quantum physics", providers=[ai, Groq])
+print(response.text)
+```
+
+## 📋 Structured Output (Pydantic Support)
+
+Force LLMs to strictly respond matching a Pydantic schema:
+
+```python
+from pydantic import BaseModel
+from ask_ai import OpenAI
+
+class User(BaseModel):
+    name: str
+    age: int
+
+ai = OpenAI()
+response = ai.ask("Extract name: Alice is 30.", response_model=User)
+user = response.pydantic
+print(user.name)  # "Alice"
+```
+
 ## 🔌 Supported Providers
 
 | Provider | Class | Capabilities |
@@ -111,11 +159,19 @@ response = ai.ask(
 
 ## 🗺️ Roadmap
 
-- [x] Baseline multiple providers
-- [x] Automated Retry & Timeout controls
-- [ ] Async API (`await ask_async`)
-- [ ] Provider Fallback (`fallback=[Groq()]`)
-- [ ] Structured Outputs (Pydantic Support)
+### 🚀 Roadmap 2.0 (Active)
+- [x] Provider Fallback chaining & Pydantic Structured Output support
+- [ ] Multi-Modal Vision input (image to text) for all key providers
+- [ ] Native support for tools/function calling execution
+- [ ] Memory buffer / session-based conversation management
+
+### 🏁 Roadmap 1.0 (Completed)
+- ~~[x] Baseline multiple providers~~
+- ~~[x] Automated Retry & Timeout controls~~
+- ~~[x] Async API (`await ask_async`)~~
+- ~~[x] Streaming Support (`ask_stream` / `ask_stream_async`)~~
+- ~~[x] Provider Fallback (`fallback=[Groq()]`)~~
+- ~~[x] Structured Outputs (Pydantic Support)~~
 
 ---
 

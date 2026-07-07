@@ -2,6 +2,12 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.pytype/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Environment variables
 .env
@@ -20,9 +26,10 @@ build/
 .vscode/
 .idea/
 
-# Local easyai artifacts/tests
+# Local easyai / ask-ai artifacts/tests
 test_*.py
 output.png
 output.mp3
 *.png
 *.mp3
+*.log
