@@ -236,7 +236,7 @@ print(user.age)   # 30
 =======
 ### 🚀 Roadmap 2.0 (Active)
 - [x] Provider Fallback chaining & Pydantic Structured Output support
-- [ ] Multi-Modal Vision input (image to text) for all key providers
+- [x] Multi-Modal Vision input (image to text) for all key providers
 - [ ] Native support for tools/function calling execution
 - [ ] Memory buffer / session-based conversation management
 
