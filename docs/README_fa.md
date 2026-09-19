@@ -2,6 +2,7 @@
 
 <p align="center">
   🌍 <b>Readme:</b>
+  
   <a href="../README.md"><img src="https://flagcdn.com/20x15/us.png" alt="English"> English</a> · 
   <a href="README_fa.md"><img src="https://flagcdn.com/20x15/ir.png" alt="Persian"> فارسی</a> · 
   <a href="README_zh.md"><img src="https://flagcdn.com/20x15/cn.png" alt="Chinese"> 中文</a> · 
@@ -10,12 +11,14 @@
   <a href="README_ru.md"><img src="https://flagcdn.com/20x15/ru.png" alt="Russian"> Русский</a> · 
   <a href="README_es.md"><img src="https://flagcdn.com/20x15/es.png" alt="Spanish"> Español</a> · 
   <a href="README_ja.md"><img src="https://flagcdn.com/20x15/jp.png" alt="Japanese"> 日本語</a>
+  
 </p>
 
 
 <p align="center">
   <img src="../assets/banner.svg" alt="askai-python animated banner" width="100%">
 </p>
+
 
 <p align="center">
   <b>یک SDK مینیمال پایتون برای جابجایی بین سرویس‌های هوش مصنوعی فقط با یک خط کد.</b><br/>
@@ -30,6 +33,7 @@
 
 ## ⚡ شروع سریع (در ۵ ثانیه)
 
+
 ```bash
 pip install askai-python
 ```
@@ -39,6 +43,7 @@ from ask_ai import OpenAI, Groq
 
 # کلید OPENAI_API_KEY را به طور خودکار از محیط می‌خواند
 OpenAI().ask("سیاه‌چاله‌ها را مثل یک کودک ۵ ساله توضیح بده").text
+
 
 # تغییر سرویس‌دهنده به صورت آنی
 Groq().ask("سیاه‌چاله‌ها را مثل یک کودک ۵ ساله توضیح بده").text
@@ -62,6 +67,7 @@ Groq().ask("سیاه‌چاله‌ها را مثل یک کودک ۵ ساله ت�
 این پروژه فقط یک کار را به بهترین نحو انجام می‌دهد: **ساده‌سازی تماس API با LLMها.**
 
 ---
+
 
 ## 🛠️ استفاده پیشرفته
 
