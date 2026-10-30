@@ -26,3 +26,8 @@ pip install "askai-python[structured]"
 Use `provider.use(Observability(...))` to attach optional metadata and event
 callbacks. Existing responses remain compatible; metadata is available through
 `response.metadata`.
+
+## Capability registry
+
+Providers now expose `capabilities()` as advisory metadata. It can be used to
+choose a provider without changing existing request behavior.
