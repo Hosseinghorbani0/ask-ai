@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 
 from ask_ai.base import BaseProvider
 from ask_ai.events import Completed, Error, TextDelta
@@ -20,8 +20,7 @@ class EventProvider(BaseProvider):
         raise RuntimeError("not used")
 
     def _send_request_stream(self, messages, config):
-        for chunk in self.chunks:
-            yield chunk
+        yield from self.chunks
         if self.failure:
             raise self.failure
 
@@ -50,3 +49,4 @@ def test_async_stream_events_complete():
     events = asyncio.run(collect())
     assert isinstance(events[0], TextDelta)
     assert isinstance(events[-1], Completed)
+

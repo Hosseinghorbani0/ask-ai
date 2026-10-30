@@ -1,5 +1,5 @@
-from pathlib import Path
 import re
+from pathlib import Path
 
 
 def test_package_has_no_pep604_union_annotations():

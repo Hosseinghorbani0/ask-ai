@@ -1,11 +1,12 @@
-import os
-import importlib
-import pkgutil
 import asyncio
+import importlib
+import os
+import pkgutil
+
+import pytest
 
 import ask_ai
-import pytest
-from ask_ai import OpenAI, Azure, AdvancedConfig
+from ask_ai import AdvancedConfig, Azure, OpenAI
 from ask_ai.base import BaseProvider
 from ask_ai.exceptions import (
     ProviderAuthError,

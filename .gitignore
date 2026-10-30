@@ -26,10 +26,8 @@ build/
 .vscode/
 .idea/
 
-# Local easyai / ask-ai artifacts/tests
-test_*.py
-output.png
-output.mp3
-*.png
-*.mp3
-*.log
+# Local generated artifacts
+local_artifacts/test_*.py
+examples/output/*.png
+examples/output/*.mp3
+logs/*.log

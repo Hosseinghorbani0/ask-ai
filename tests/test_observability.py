@@ -1,4 +1,4 @@
-from ask_ai import AdvancedConfig, Observability
+from ask_ai import Observability
 from ask_ai.base import BaseProvider, Response
 
 
