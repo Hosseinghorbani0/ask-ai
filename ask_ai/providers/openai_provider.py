@@ -8,6 +8,7 @@ except ImportError:
     openai = None
 
 from ..base import BaseProvider, Response
+from ..capabilities import Capabilities
 from ..config import AdvancedConfig
 from ..exceptions import APIKeyError, ProviderError, map_provider_exception
 from ..media import AudioObject, ImageObject
@@ -16,6 +17,17 @@ logger = logging.getLogger("ask_ai")
 
 
 class OpenAIProvider(BaseProvider):
+    def capabilities(self) -> Capabilities:
+        return Capabilities(
+            streaming=True,
+            async_streaming=True,
+            structured_output=True,
+            tool_calls=True,
+            image_generation=True,
+            audio_generation=True,
+            vision=True,
+        )
+
     def __init__(self, api_key: str = None, model: str = None, **kwargs):
         super().__init__(api_key, model, **kwargs)
         if not self.api_key:
