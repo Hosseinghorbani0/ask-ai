@@ -285,6 +285,18 @@ if capabilities.structured_output:
     print("Structured output is available")
 ```
 
+### 🧭 Smart Router
+
+Route requests across providers using deterministic `cheapest`, `fastest`, or
+`most_reliable` policies:
+
+```python
+from ask_ai import Router
+
+router = Router([openai, groq], policy="fastest")
+response = router.ask("Explain routing")
+```
+
 ---
 
 ## 🗺️ Roadmap
