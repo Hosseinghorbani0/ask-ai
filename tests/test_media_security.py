@@ -2,6 +2,7 @@ import pytest
 
 from ask_ai import MediaPolicy, download_media
 from ask_ai.exceptions import MediaSecurityError
+from ask_ai.media import ImageObject, MediaError
 
 
 def test_media_policy_rejects_insecure_and_unallowlisted_urls():
@@ -84,3 +85,8 @@ def test_media_download_rejects_mime_spoofing(monkeypatch):
                 max_bytes=100,
             ),
         )
+
+
+def test_media_from_base64_checks_encoded_length_before_decoding():
+    with pytest.raises(MediaError, match="size limit"):
+        ImageObject.from_base64("AAAAAA==", max_encoded_length=4)
