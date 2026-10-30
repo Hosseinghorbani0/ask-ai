@@ -1,5 +1,6 @@
 import asyncio
 
+from ask_ai import Observability
 from ask_ai.base import BaseProvider, Response
 
 
@@ -32,8 +33,20 @@ def test_session_limits_history():
     session = SessionProvider(api_key="test").session(max_messages=2)
     session.ask("one")
     session.ask("two")
+    session.ask("three")
     assert len(session.messages) == 2
-    assert session.messages[0]["role"] == "user"
+    assert [message["role"] for message in session.messages] == ["user", "assistant"]
+    assert session.messages[0]["content"] == "three"
+
+
+def test_session_uses_provider_observability():
+    events = []
+    provider = SessionProvider(api_key="test").use(Observability(on_event=events.append))
+
+    response = provider.session().ask("hello")
+
+    assert response.metadata.provider == "SessionProvider"
+    assert events[0]["type"] == "completed"
 
 
 def test_session_async_and_streaming():
