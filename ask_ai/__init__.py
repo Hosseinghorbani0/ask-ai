@@ -2,7 +2,7 @@
 ask-ai: A minimal Python SDK to switch between LLM providers in one line.
 """
 
-__version__ = "0.4.3"
+__version__ = "0.5.0"
 
 from .base import Response
 from .capabilities import Capabilities
