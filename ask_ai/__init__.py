@@ -20,9 +20,11 @@ from .exceptions import (
     ProviderTimeoutError,
     ProviderUnavailableError,
     StreamNotSupportedError,
+    StructuredValidationError,
 )
 from .media import AudioObject, ImageObject
 from .providers import Anthropic, Azure, Google, Groq, OpenAI, OpenRouter
+from .structured import parse_structured
 
 __all__ = [
     # Providers
@@ -51,4 +53,6 @@ __all__ = [
     "ProviderUnavailableError",
     "MediaTypeNotSupportedError",
     "StreamNotSupportedError",
+    "StructuredValidationError",
+    "parse_structured",
 ]
