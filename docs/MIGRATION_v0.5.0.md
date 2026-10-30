@@ -36,3 +36,9 @@ choose a provider without changing existing request behavior.
 
 `Router` is an optional higher-level API. Existing provider instances and
 fallback behavior remain unchanged.
+
+## Secure media
+
+Use `MediaPolicy` and `download_media` for constrained downloads. Existing
+provider-generated media continues to work, but now uses HTTPS and size
+validation.
