@@ -3,6 +3,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from .exceptions import MediaSecurityError
+from .media import HeaderInspector
 
 
 @dataclass(frozen=True)
@@ -49,7 +50,17 @@ def download_media(url: str, policy: Optional[MediaPolicy] = None) -> bytes:
                     if total > policy.max_bytes:
                         raise MediaSecurityError("Media payload exceeds the configured size limit.")
                     chunks.append(chunk)
-                return b"".join(chunks)
+                data = b"".join(chunks)
+                _, _, detected_mime = HeaderInspector.detect_type(data)
+                if policy.allowed_mime_types and detected_mime not in policy.allowed_mime_types:
+                    raise MediaSecurityError(
+                        f"Detected media MIME type is not allowed: {detected_mime}"
+                    )
+                if content_type and detected_mime != content_type:
+                    raise MediaSecurityError(
+                        f"Media MIME header {content_type!r} conflicts with detected type {detected_mime!r}."
+                    )
+                return data
     except MediaSecurityError:
         raise
     except Exception as error:
