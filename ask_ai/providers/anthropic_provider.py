@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict, Iterator, AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 
 try:
     import anthropic
@@ -8,7 +8,7 @@ except ImportError:
 
 from ..base import BaseProvider, Response
 from ..config import AdvancedConfig
-from ..exceptions import APIKeyError, ProviderError, MediaTypeNotSupportedError
+from ..exceptions import APIKeyError, MediaTypeNotSupportedError, ProviderError, map_provider_exception
 
 logger = logging.getLogger("ask_ai")
 
@@ -22,14 +22,20 @@ class AnthropicProvider(BaseProvider):
         if anthropic is None:
             raise ProviderError("Anthropic client library not installed. Run: pip install anthropic")
 
-        self.client = anthropic.Anthropic(api_key=self.api_key)
+        self.client = anthropic.Anthropic(
+            api_key=self.api_key,
+            timeout=self.config.extra.get("timeout", 30.0),
+        )
         self._async_client = None
 
     @property
     def async_client(self):
         """Lazy-load the async client only when needed."""
         if self._async_client is None:
-            self._async_client = anthropic.AsyncAnthropic(api_key=self.api_key)
+            self._async_client = anthropic.AsyncAnthropic(
+                api_key=self.api_key,
+                timeout=self.config.extra.get("timeout", 30.0),
+            )
         return self._async_client
 
     def _get_api_key_env_var(self):
@@ -40,7 +46,7 @@ class AnthropicProvider(BaseProvider):
 
     # ─── Helpers ───────────────────────────────────────────
 
-    def _convert_messages(self, messages: List[Dict[str, str]]):
+    def _convert_messages(self, messages: list[dict[str, str]]):
         """Convert OpenAI-style messages to Anthropic format."""
         anthropic_messages = []
         system_instruction = None
@@ -55,7 +61,7 @@ class AnthropicProvider(BaseProvider):
 
         return anthropic_messages, system_instruction
 
-    def _build_kwargs(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> dict:
+    def _build_kwargs(self, messages: list[dict[str, str]], config: AdvancedConfig) -> dict:
         """Build kwargs for Anthropic messages.create."""
         anthropic_messages, system_instruction = self._convert_messages(messages)
 
@@ -65,6 +71,7 @@ class AnthropicProvider(BaseProvider):
             "max_tokens": config.max_tokens or 4096,
             "temperature": config.temperature,
             "top_p": config.top_p,
+            "timeout": config.extra.get("timeout"),
         }
         if system_instruction:
             kwargs["system"] = system_instruction
@@ -73,7 +80,7 @@ class AnthropicProvider(BaseProvider):
 
     # ─── Sync ──────────────────────────────────────────────
 
-    def _send_request(self, messages: List[Dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
+    def _send_request(self, messages: list[dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
         if output_type in ("image", "audio"):
             raise MediaTypeNotSupportedError(f"Anthropic provider does not support {output_type} generation.")
 
@@ -87,21 +94,20 @@ class AnthropicProvider(BaseProvider):
 
             return Response(text=text_content)
         except Exception as e:
-            raise ProviderError(f"Anthropic API Error: {e}") from e
+            raise map_provider_exception(e, "Anthropic", "API") from e
 
-    def _send_request_stream(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> Iterator[str]:
+    def _send_request_stream(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Iterator[str]:
         """Sync streaming with Anthropic."""
         try:
             kwargs = self._build_kwargs(messages, config)
             with self.client.messages.stream(**kwargs) as stream:
-                for text in stream.text_stream:
-                    yield text
+                yield from stream.text_stream
         except Exception as e:
-            raise ProviderError(f"Anthropic Streaming Error: {e}") from e
+            raise map_provider_exception(e, "Anthropic", "streaming") from e
 
     # ─── Async ─────────────────────────────────────────────
 
-    async def _send_request_async(self, messages: List[Dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
+    async def _send_request_async(self, messages: list[dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
         if output_type in ("image", "audio"):
             raise MediaTypeNotSupportedError(f"Anthropic provider does not support {output_type} generation.")
 
@@ -115,9 +121,9 @@ class AnthropicProvider(BaseProvider):
 
             return Response(text=text_content)
         except Exception as e:
-            raise ProviderError(f"Anthropic API Error: {e}") from e
+            raise map_provider_exception(e, "Anthropic", "API") from e
 
-    async def _send_request_stream_async(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> AsyncIterator[str]:
+    async def _send_request_stream_async(self, messages: list[dict[str, str]], config: AdvancedConfig) -> AsyncIterator[str]:
         """Async streaming with Anthropic."""
         try:
             kwargs = self._build_kwargs(messages, config)
@@ -125,4 +131,4 @@ class AnthropicProvider(BaseProvider):
                 async for text in stream.text_stream:
                     yield text
         except Exception as e:
-            raise ProviderError(f"Anthropic Streaming Error: {e}") from e
+            raise map_provider_exception(e, "Anthropic", "streaming") from e
