@@ -122,6 +122,10 @@ class BaseProvider:
         self._middleware.append(middleware)
         return self
 
+    def session(self, max_messages: int | None = None):
+        from .session import ConversationSession
+        return ConversationSession(self, max_messages=max_messages)
+
     def capabilities(self) -> Capabilities:
         """Return conservative capabilities for custom providers."""
         return Capabilities()
