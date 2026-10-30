@@ -260,6 +260,19 @@ for event in OpenAI().ask_stream_events("Tell me a story"):
         print("\nDone")
 ```
 
+### 📊 Observability
+
+Attach optional middleware to receive latency, retry, provider, model, usage,
+and estimated cost metadata:
+
+```python
+from ask_ai import Observability, OpenAI
+
+ai = OpenAI().use(Observability(on_event=print))
+response = ai.ask("Explain tracing")
+print(response.metadata.latency_ms)
+```
+
 ---
 
 ## 🗺️ Roadmap
