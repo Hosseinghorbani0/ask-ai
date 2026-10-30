@@ -6,6 +6,7 @@ __version__ = "0.4.3"
 
 from .base import Response
 from .config import AdvancedConfig
+from .events import Completed, Error, TextDelta, ToolCall, UsageUpdate
 from .exceptions import (
     AskAIConfigError,
     AskAIError,
@@ -55,4 +56,9 @@ __all__ = [
     "StreamNotSupportedError",
     "StructuredValidationError",
     "parse_structured",
+    "TextDelta",
+    "ToolCall",
+    "UsageUpdate",
+    "Completed",
+    "Error",
 ]
