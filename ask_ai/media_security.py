@@ -37,6 +37,10 @@ def download_media(url: str, policy: Optional[MediaPolicy] = None) -> bytes:
     try:
         with httpx.Client(timeout=policy.timeout, follow_redirects=False) as client:
             with client.stream("GET", url) as response:
+                if 300 <= response.status_code < 400:
+                    raise MediaSecurityError(
+                        "Media redirects are disabled; use a final HTTPS URL on an allowlisted host."
+                    )
                 response.raise_for_status()
                 content_type = response.headers.get("content-type", "").split(";", 1)[0].strip()
                 policy.validate_mime(content_type)

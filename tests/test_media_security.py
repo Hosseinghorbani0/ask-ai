@@ -49,6 +49,7 @@ def test_media_download_enforces_size_and_mime(monkeypatch):
 
 def test_media_download_rejects_mime_spoofing(monkeypatch):
     class Response:
+        status_code = 200
         headers = {"content-type": "image/png", "content-length": "12"}
 
         def __enter__(self):
@@ -90,3 +91,32 @@ def test_media_download_rejects_mime_spoofing(monkeypatch):
 def test_media_from_base64_checks_encoded_length_before_decoding():
     with pytest.raises(MediaError, match="size limit"):
         ImageObject.from_base64("AAAAAA==", max_encoded_length=4)
+
+
+def test_media_download_rejects_redirects(monkeypatch):
+    class Response:
+        status_code = 302
+        headers = {"location": "https://other.example/image.png"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    class Client:
+        def __init__(self, **kwargs):
+            assert kwargs["follow_redirects"] is False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def stream(self, method, url):
+            return Response()
+
+    monkeypatch.setattr("httpx.Client", Client)
+    with pytest.raises(MediaSecurityError, match="redirects are disabled"):
+        download_media("https://example.com/image.png")
