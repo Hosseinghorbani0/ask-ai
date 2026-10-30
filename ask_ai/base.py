@@ -6,6 +6,7 @@ import time
 from collections.abc import AsyncIterator, Iterator
 from typing import Any, Union
 
+from .capabilities import Capabilities
 from .config import AdvancedConfig
 from .events import Completed, Error, TextDelta
 from .media import AudioObject, ImageObject
@@ -120,6 +121,10 @@ class BaseProvider:
         """Attach optional observability middleware and return this provider."""
         self._middleware.append(middleware)
         return self
+
+    def capabilities(self) -> Capabilities:
+        """Return conservative capabilities for custom providers."""
+        return Capabilities()
 
     def _attach_metadata(self, response: Response, started_at: float, retry_count: int) -> Response:
         usage = getattr(response, "usage", None)
