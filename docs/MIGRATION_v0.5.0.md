@@ -1,5 +1,8 @@
 # Migration guide for v0.5.0
 
+The v0.5.0 APIs are additive. Existing `ask()`, `ask_stream()`, provider
+classes, and response text access remain compatible.
+
 ## Structured responses
 
 Existing `response_model=Model` calls remain supported. Use `response.parsed`
