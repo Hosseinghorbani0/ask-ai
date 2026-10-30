@@ -24,6 +24,7 @@ from .exceptions import (
     StructuredValidationError,
 )
 from .media import AudioObject, ImageObject
+from .observability import Observability, ResponseMetadata, Usage
 from .providers import Anthropic, Azure, Google, Groq, OpenAI, OpenRouter
 from .structured import parse_structured
 
@@ -61,4 +62,7 @@ __all__ = [
     "UsageUpdate",
     "Completed",
     "Error",
+    "Observability",
+    "ResponseMetadata",
+    "Usage",
 ]
