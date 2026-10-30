@@ -15,7 +15,12 @@ from .openai_provider import OpenAIProvider
 
 class OpenRouterProvider(OpenAIProvider):
     def capabilities(self) -> Capabilities:
-        return Capabilities(streaming=True, async_streaming=True, structured_output=True)
+        return Capabilities(
+            streaming=True,
+            async_streaming=True,
+            structured_output=True,
+            image_generation=True,
+        )
     """OpenRouter provider â€” routes to multiple models via OpenAI-compatible API."""
 
     def __init__(self, api_key: str = None, model: str = None, **kwargs):
