@@ -37,6 +37,19 @@ class Response:
         return text
 
     @property
+    def raw(self) -> str:
+        """Return the unmodified provider text."""
+        return self._raw_text
+
+    @property
+    def parsed(self) -> Any:
+        """Return the validated structured response, if one was requested."""
+        if not self.response_model:
+            raise ValueError("No response_model was specified for this request.")
+        from .structured import parse_structured
+        return parse_structured(self._raw_text, self.response_model)
+
+    @property
     def json(self) -> Union[dict[str, Any], list]:
         """Returns parsed JSON. If 'json=True' was passed, this is highly reliable."""
         from .utils import parse_json
@@ -47,10 +60,13 @@ class Response:
         """Returns parsed Pydantic model instance if response_model was provided."""
         if not self.response_model:
             raise ValueError("No response_model was specified for this request.")
-        return self.to_model(self.response_model)
+        return self.parsed
 
     def to_model(self, model_class: Any) -> Any:
         """Parse the response text into a specified Pydantic model."""
+        from .structured import parse_structured
+        if isinstance(model_class, dict) or hasattr(model_class, "model_validate") or hasattr(model_class, "parse_obj"):
+            return parse_structured(self._raw_text, model_class)
         text_content = self.text
         if hasattr(model_class, "model_validate_json"):
             return model_class.model_validate_json(text_content)
@@ -147,10 +163,22 @@ class BaseProvider:
         output_type = kwargs.get('output_type')
         retry = int(kwargs.get('retry', final_config.extra.get('retry', 0)) or 0)
         response_model = kwargs.get('response_model')
+        validation_retries = int(kwargs.get("validation_retries", 0) or 0)
 
-        response = self._execute_with_retry(
-            self._send_request, messages, final_config, output_type, retry
-        )
+        response = None
+        for validation_attempt in range(validation_retries + 1):
+            response = self._execute_with_retry(
+                self._send_request, messages, final_config, output_type, retry
+            )
+            if not response_model:
+                break
+            response.response_model = response_model
+            try:
+                response.parsed
+                break
+            except Exception:
+                if validation_attempt == validation_retries:
+                    raise
         if response_model:
             response.response_model = response_model
         return response
@@ -225,10 +253,22 @@ class BaseProvider:
         output_type = kwargs.get('output_type')
         retry = int(kwargs.get('retry', final_config.extra.get('retry', 0)) or 0)
         response_model = kwargs.get('response_model')
+        validation_retries = int(kwargs.get("validation_retries", 0) or 0)
 
-        response = await self._execute_with_retry_async(
-            self._send_request_async, messages, final_config, output_type, retry
-        )
+        response = None
+        for validation_attempt in range(validation_retries + 1):
+            response = await self._execute_with_retry_async(
+                self._send_request_async, messages, final_config, output_type, retry
+            )
+            if not response_model:
+                break
+            response.response_model = response_model
+            try:
+                response.parsed
+                break
+            except Exception:
+                if validation_attempt == validation_retries:
+                    raise
         if response_model:
             response.response_model = response_model
         return response
