@@ -58,6 +58,11 @@ class AskAIParsingError(AskAIError):
     pass
 
 
+class StructuredValidationError(AskAIParsingError):
+    """Raised when structured output does not match the requested schema."""
+    pass
+
+
 class StreamNotSupportedError(AskAIError):
     """Raised when streaming is requested but the provider doesn't support it."""
     pass
