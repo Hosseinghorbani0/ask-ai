@@ -273,6 +273,18 @@ response = ai.ask("Explain tracing")
 print(response.metadata.latency_ms)
 ```
 
+### 🧩 Provider Capabilities
+
+Inspect supported features before selecting a provider:
+
+```python
+from ask_ai import OpenAI
+
+capabilities = OpenAI().capabilities()
+if capabilities.structured_output:
+    print("Structured output is available")
+```
+
 ---
 
 ## 🗺️ Roadmap
