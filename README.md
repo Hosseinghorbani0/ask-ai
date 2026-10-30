@@ -222,6 +222,29 @@ print(user.name)  # "Alice"
 print(user.age)   # 30
 ```
 
+### ✅ Validated Structured Responses
+
+Structured responses support Pydantic models, dataclasses, `TypedDict`, and JSON
+Schema dictionaries. The raw provider text remains available separately:
+
+```python
+from dataclasses import dataclass
+from ask_ai import OpenAI
+
+@dataclass
+class User:
+    name: str
+    age: int
+
+response = OpenAI().ask(
+    "Extract: Alice is 30.",
+    response_model=User,
+    validation_retries=2,
+)
+print(response.raw)
+print(response.parsed.name)
+```
+
 ---
 
 ## 🗺️ Roadmap
