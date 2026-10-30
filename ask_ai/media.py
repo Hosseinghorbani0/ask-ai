@@ -171,6 +171,7 @@ class MediaObject:
     Enterprise base class representing immutable binary media payload.
     Provides memory-efficient byte handling, hash fingerprints, and serialization.
     """
+    DEFAULT_MAX_BASE64_LENGTH = 32 * 1024 * 1024
 
     def __init__(self, data: Union[bytes, bytearray], media_type: str = "generic", mime_type: Optional[str] = None):
         if not isinstance(data, (bytes, bytearray)):
@@ -260,12 +261,28 @@ class MediaObject:
         return cls(data)
 
     @classmethod
-    def from_base64(cls: type[T], base64_str: str) -> T:
+    def from_base64(
+        cls: type[T],
+        base64_str: str,
+        max_encoded_length: Optional[int] = None,
+    ) -> T:
         """Constructs a MediaObject instance from a Base64 string or Data URI."""
         clean_b64 = base64_str
         if "," in base64_str:
             clean_b64 = base64_str.split(",", 1)[1]
-        decoded_bytes = base64.b64decode(clean_b64)
+        max_length = (
+            cls.DEFAULT_MAX_BASE64_LENGTH
+            if max_encoded_length is None
+            else max_encoded_length
+        )
+        if max_length < 0:
+            raise ValueError("max_encoded_length must be non-negative.")
+        if len(clean_b64) > max_length:
+            raise MediaError("Base64 media payload exceeds the configured size limit.")
+        try:
+            decoded_bytes = base64.b64decode(clean_b64, validate=True)
+        except ValueError as error:
+            raise MediaFormatError(f"Invalid Base64 media payload: {error}") from error
         return cls(decoded_bytes)
 
     def __len__(self) -> int:

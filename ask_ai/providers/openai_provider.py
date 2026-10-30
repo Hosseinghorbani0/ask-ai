@@ -8,6 +8,7 @@ except ImportError:
     openai = None
 
 from ..base import BaseProvider, Response
+from ..capabilities import Capabilities
 from ..config import AdvancedConfig
 from ..exceptions import APIKeyError, ProviderError, map_provider_exception
 from ..media import AudioObject, ImageObject
@@ -16,6 +17,17 @@ logger = logging.getLogger("ask_ai")
 
 
 class OpenAIProvider(BaseProvider):
+    def capabilities(self) -> Capabilities:
+        return Capabilities(
+            streaming=True,
+            async_streaming=True,
+            structured_output=True,
+            tool_calls=True,
+            image_generation=True,
+            audio_generation=True,
+            vision=True,
+        )
+
     def __init__(self, api_key: str = None, model: str = None, **kwargs):
         super().__init__(api_key, model, **kwargs)
         if not self.api_key:
@@ -259,27 +271,14 @@ class OpenAIProvider(BaseProvider):
 # ─── Download Helpers ──────────────────────────────────────
 
 def _download_bytes(url: str, timeout: float = 30.0) -> bytes:
-    """Download bytes from URL. Uses httpx if available, falls back to urllib."""
-    try:
-        import httpx
-        with httpx.Client(timeout=timeout) as client:
-            resp = client.get(url)
-            resp.raise_for_status()
-            return resp.content
-    except ImportError:
-        from urllib.request import urlopen
-        with urlopen(url, timeout=timeout) as resp:
-            return resp.read()
+    from ..media_security import MediaPolicy, download_media
+    return download_media(url, MediaPolicy(timeout=timeout))
 
 
 async def _download_bytes_async(url: str, timeout: float = 30.0) -> bytes:
-    """Async download bytes from URL."""
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            return resp.content
-    except ImportError:
-        import asyncio
-        return await asyncio.get_running_loop().run_in_executor(None, _download_bytes, url, timeout)
+    import asyncio
+
+    from ..media_security import MediaPolicy, download_media
+    return await asyncio.get_running_loop().run_in_executor(
+        None, download_media, url, MediaPolicy(timeout=timeout)
+    )

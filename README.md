@@ -222,6 +222,114 @@ print(user.name)  # "Alice"
 print(user.age)   # 30
 ```
 
+### ✅ Validated Structured Responses
+
+Structured responses support Pydantic models, dataclasses, `TypedDict`, and JSON
+Schema dictionaries. The raw provider text remains available separately:
+
+```python
+from dataclasses import dataclass
+from ask_ai import OpenAI
+
+@dataclass
+class User:
+    name: str
+    age: int
+
+response = OpenAI().ask(
+    "Extract: Alice is 30.",
+    response_model=User,
+    validation_retries=2,
+)
+print(response.raw)
+print(response.parsed.name)
+```
+
+### Streaming Events
+
+Use typed events for text, completion, and errors while keeping the legacy
+`ask_stream()` API unchanged:
+
+```python
+from ask_ai import Completed, OpenAI, TextDelta
+
+for event in OpenAI().ask_stream_events("Tell me a story"):
+    if isinstance(event, TextDelta):
+        print(event.text, end="")
+    elif isinstance(event, Completed):
+        print("\nDone")
+```
+
+### 📊 Observability
+
+Attach optional middleware to receive latency, retry, provider, model, usage,
+and estimated cost metadata:
+
+```python
+from ask_ai import Observability, OpenAI
+
+ai = OpenAI().use(Observability(on_event=print))
+response = ai.ask("Explain tracing")
+print(response.metadata.latency_ms)
+```
+
+### Provider Capabilities
+
+Inspect advisory capability metadata before selecting a provider:
+
+```python
+from ask_ai import OpenAI
+
+capabilities = OpenAI().capabilities()
+if capabilities.structured_output:
+    print("Structured output is available")
+```
+
+### Smart Router
+
+Route requests across providers using deterministic `cheapest`, `fastest`, or
+`most_reliable` policies. Supply static `profiles` for meaningful ordering:
+
+```python
+from ask_ai import Router
+
+router = Router(
+    [openai, groq],
+    policy="fastest",
+    profiles={"OpenAI": {"latency_ms": 100}, "Groq": {"latency_ms": 50}},
+)
+response = router.ask("Explain routing")
+```
+
+### 🔒 Secure Media Downloads
+
+Provider media downloads can be constrained by HTTPS, host, detected MIME, size,
+and timeout policy. Redirects are intentionally rejected:
+
+```python
+from ask_ai import MediaPolicy, download_media
+
+data = download_media(
+    "https://example.com/image.png",
+    MediaPolicy(
+        max_bytes=10 * 1024 * 1024,
+        allowed_mime_types={"image/png"},
+        allowed_hosts={"example.com"},
+    ),
+)
+```
+
+### Conversation Sessions
+
+Create optional in-memory conversation state without changing the normal
+provider API:
+
+```python
+session = OpenAI().session(max_messages=20)
+session.ask("My name is Ada.")
+print(session.ask("What is my name?").text)
+```
+
 ---
 
 ## 🗺️ Roadmap
@@ -230,7 +338,7 @@ print(user.age)   # 30
 - [x] Provider Fallback chaining & Pydantic Structured Output support
 - [x] Multi-Modal Vision input (image to text) for all key providers
 - [ ] Native support for tools/function calling execution
-- [ ] Memory buffer / session-based conversation management
+- [x] Optional in-memory session-based conversation management
 
 ### 🏁 Roadmap 1.0 (Completed)
 - ~~[x] OpenAI, Groq, Gemini, Anthropic, Azure, OpenRouter support~~

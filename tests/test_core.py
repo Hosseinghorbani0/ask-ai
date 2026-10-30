@@ -1,11 +1,12 @@
-import os
-import importlib
-import pkgutil
 import asyncio
+import importlib
+import os
+import pkgutil
+
+import pytest
 
 import ask_ai
-import pytest
-from ask_ai import OpenAI, Azure, AdvancedConfig
+from ask_ai import AdvancedConfig, Azure, OpenAI
 from ask_ai.base import BaseProvider
 from ask_ai.exceptions import (
     ProviderAuthError,
@@ -68,7 +69,7 @@ def test_all_package_modules_and_providers_import():
 
 
 def test_release_version_and_requirements_are_aligned():
-    assert ask_ai.__version__ == "0.4.3"
+    assert ask_ai.__version__ == "0.5.0"
     requirements = open("ask_ai/requirements.txt", encoding="utf-8").read()
     for package in ("openai", "anthropic", "google-generativeai", "groq", "Pillow", "httpx"):
         assert package in requirements

@@ -53,8 +53,18 @@ class MediaTypeNotSupportedError(AskAIError):
     pass
 
 
+class MediaSecurityError(AskAIError):
+    """Raised when media violates URL, MIME, size, or download policy."""
+    pass
+
+
 class AskAIParsingError(AskAIError):
     """Raised when expect_json is True but the response cannot be parsed."""
+    pass
+
+
+class StructuredValidationError(AskAIParsingError):
+    """Raised when structured output does not match the requested schema."""
     pass
 
 

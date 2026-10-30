@@ -2,16 +2,19 @@
 ask-ai: A minimal Python SDK to switch between LLM providers in one line.
 """
 
-__version__ = "0.4.3"
+__version__ = "0.5.0"
 
 from .base import Response
+from .capabilities import Capabilities
 from .config import AdvancedConfig
+from .events import Completed, Error, TextDelta, ToolCall, UsageUpdate
 from .exceptions import (
     AskAIConfigError,
     AskAIError,
     AskAINetworkError,
     AskAIParsingError,
     AskAIRateLimitError,
+    MediaSecurityError,
     MediaTypeNotSupportedError,
     ProviderAuthError,
     ProviderError,
@@ -20,9 +23,15 @@ from .exceptions import (
     ProviderTimeoutError,
     ProviderUnavailableError,
     StreamNotSupportedError,
+    StructuredValidationError,
 )
 from .media import AudioObject, ImageObject
+from .media_security import MediaPolicy, download_media
+from .observability import Observability, ResponseMetadata, Usage
 from .providers import Anthropic, Azure, Google, Groq, OpenAI, OpenRouter
+from .router import Router
+from .session import ConversationSession
+from .structured import parse_structured
 
 __all__ = [
     # Providers
@@ -50,5 +59,21 @@ __all__ = [
     "ProviderInvalidRequestError",
     "ProviderUnavailableError",
     "MediaTypeNotSupportedError",
+    "MediaSecurityError",
     "StreamNotSupportedError",
+    "StructuredValidationError",
+    "parse_structured",
+    "TextDelta",
+    "ToolCall",
+    "UsageUpdate",
+    "Completed",
+    "Error",
+    "Observability",
+    "ResponseMetadata",
+    "Usage",
+    "Capabilities",
+    "Router",
+    "ConversationSession",
+    "MediaPolicy",
+    "download_media",
 ]

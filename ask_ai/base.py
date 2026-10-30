@@ -4,10 +4,13 @@ import os
 import random
 import time
 from collections.abc import AsyncIterator, Iterator
-from typing import Any, Union
+from typing import Any, Optional, Union
 
+from .capabilities import Capabilities
 from .config import AdvancedConfig
+from .events import Completed, Error, TextDelta
 from .media import AudioObject, ImageObject
+from .observability import Observability, ResponseMetadata, Usage
 
 logger = logging.getLogger("ask_ai")
 
@@ -16,10 +19,18 @@ class Response:
     """
     Unified response object for all ask-ai requests.
     """
-    def __init__(self, text: str = "", media: Union[ImageObject, AudioObject, None] = None, response_model: Any = None, **kwargs):
+    def __init__(
+        self,
+        text: str = "",
+        media: Union[ImageObject, AudioObject, None] = None,
+        response_model: Any = None,
+        metadata: Any = None,
+        **kwargs,
+    ):
         self._raw_text = text
         self.media = media
         self.response_model = response_model
+        self.metadata = metadata
         self._kwargs = kwargs
 
     @property
@@ -37,6 +48,19 @@ class Response:
         return text
 
     @property
+    def raw(self) -> str:
+        """Return the unmodified provider text."""
+        return self._raw_text
+
+    @property
+    def parsed(self) -> Any:
+        """Return the validated structured response, if one was requested."""
+        if not self.response_model:
+            raise ValueError("No response_model was specified for this request.")
+        from .structured import parse_structured
+        return parse_structured(self._raw_text, self.response_model)
+
+    @property
     def json(self) -> Union[dict[str, Any], list]:
         """Returns parsed JSON. If 'json=True' was passed, this is highly reliable."""
         from .utils import parse_json
@@ -47,10 +71,13 @@ class Response:
         """Returns parsed Pydantic model instance if response_model was provided."""
         if not self.response_model:
             raise ValueError("No response_model was specified for this request.")
-        return self.to_model(self.response_model)
+        return self.parsed
 
     def to_model(self, model_class: Any) -> Any:
         """Parse the response text into a specified Pydantic model."""
+        from .structured import parse_structured
+        if isinstance(model_class, dict) or hasattr(model_class, "model_validate") or hasattr(model_class, "parse_obj"):
+            return parse_structured(self._raw_text, model_class)
         text_content = self.text
         if hasattr(model_class, "model_validate_json"):
             return model_class.model_validate_json(text_content)
@@ -88,6 +115,41 @@ class BaseProvider:
         self.model = model or self._get_default_model()
         self.persona = persona
         self.config = AdvancedConfig(**kwargs)
+        self._middleware: list[Observability] = []
+
+    def use(self, middleware: Observability) -> "BaseProvider":
+        """Attach optional observability middleware and return this provider."""
+        self._middleware.append(middleware)
+        return self
+
+    def session(self, max_messages: Optional[int] = None):
+        from .session import ConversationSession
+        return ConversationSession(self, max_messages=max_messages)
+
+    def capabilities(self) -> Capabilities:
+        """Return conservative capabilities for custom providers."""
+        return Capabilities()
+
+    def _attach_metadata(self, response: Response, started_at: float, retry_count: int) -> Response:
+        usage = getattr(response, "usage", None)
+        if isinstance(usage, dict):
+            usage = Usage(**usage)
+        metadata = ResponseMetadata(
+            provider=self.__class__.__name__,
+            model=self.model,
+            latency_ms=(time.perf_counter() - started_at) * 1000,
+            retry_count=retry_count,
+            usage=usage,
+            estimated_cost=None,
+        )
+        response.metadata = metadata
+        for middleware in getattr(self, "_middleware", []):
+            metadata = ResponseMetadata(
+                **{**metadata.__dict__, "estimated_cost": middleware.cost(self.model, usage)}
+            )
+            response.metadata = metadata
+            middleware.emit({"type": "completed", "metadata": metadata, "response": response})
+        return response
 
     def _get_api_key_env_var(self) -> str:
         """Subclasses should return the env var name, e.g. 'OPENAI_API_KEY'"""
@@ -147,13 +209,26 @@ class BaseProvider:
         output_type = kwargs.get('output_type')
         retry = int(kwargs.get('retry', final_config.extra.get('retry', 0)) or 0)
         response_model = kwargs.get('response_model')
+        validation_retries = int(kwargs.get("validation_retries", 0) or 0)
 
-        response = self._execute_with_retry(
-            self._send_request, messages, final_config, output_type, retry
-        )
+        started_at = time.perf_counter()
+        response = None
+        for validation_attempt in range(validation_retries + 1):
+            response = self._execute_with_retry(
+                self._send_request, messages, final_config, output_type, retry
+            )
+            if not response_model:
+                break
+            response.response_model = response_model
+            try:
+                response.parsed
+                break
+            except Exception:
+                if validation_attempt == validation_retries:
+                    raise
         if response_model:
             response.response_model = response_model
-        return response
+        return self._attach_metadata(response, started_at, getattr(self, "_retry_count", 0))
 
     def ask_stream(self, query: str, **kwargs) -> Iterator[str]:
         """
@@ -191,6 +266,19 @@ class BaseProvider:
         messages = self._prepare_messages(query, final_config)
         yield from self._send_request_stream(messages, final_config)
 
+    def ask_stream_events(self, query: str, **kwargs) -> Iterator[Any]:
+        """Yield typed events while preserving the legacy text stream API."""
+        emitted_chunks = 0
+        text_parts = []
+        try:
+            for chunk in self.ask_stream(query, **kwargs):
+                emitted_chunks += 1
+                text_parts.append(chunk)
+                yield TextDelta(text=chunk, index=emitted_chunks - 1)
+            yield Completed(response=Response(text="".join(text_parts)))
+        except Exception as error:
+            yield Error(error=error, emitted_chunks=emitted_chunks)
+
     # ─── Async API ──────────────────────────────────────────
 
     async def ask_async(self, query: str, **kwargs) -> Response:
@@ -225,13 +313,26 @@ class BaseProvider:
         output_type = kwargs.get('output_type')
         retry = int(kwargs.get('retry', final_config.extra.get('retry', 0)) or 0)
         response_model = kwargs.get('response_model')
+        validation_retries = int(kwargs.get("validation_retries", 0) or 0)
 
-        response = await self._execute_with_retry_async(
-            self._send_request_async, messages, final_config, output_type, retry
-        )
+        started_at = time.perf_counter()
+        response = None
+        for validation_attempt in range(validation_retries + 1):
+            response = await self._execute_with_retry_async(
+                self._send_request_async, messages, final_config, output_type, retry
+            )
+            if not response_model:
+                break
+            response.response_model = response_model
+            try:
+                response.parsed
+                break
+            except Exception:
+                if validation_attempt == validation_retries:
+                    raise
         if response_model:
             response.response_model = response_model
-        return response
+        return self._attach_metadata(response, started_at, getattr(self, "_retry_count", 0))
 
     async def ask_stream_async(self, query: str, **kwargs) -> AsyncIterator[str]:
         """
@@ -269,6 +370,19 @@ class BaseProvider:
         messages = self._prepare_messages(query, final_config)
         async for chunk in self._send_request_stream_async(messages, final_config):
             yield chunk
+
+    async def ask_stream_events_async(self, query: str, **kwargs) -> AsyncIterator[Any]:
+        """Yield typed events while preserving the legacy async text stream API."""
+        emitted_chunks = 0
+        text_parts = []
+        try:
+            async for chunk in self.ask_stream_async(query, **kwargs):
+                emitted_chunks += 1
+                text_parts.append(chunk)
+                yield TextDelta(text=chunk, index=emitted_chunks - 1)
+            yield Completed(response=Response(text="".join(text_parts)))
+        except Exception as error:
+            yield Error(error=error, emitted_chunks=emitted_chunks)
 
     # ─── Config Helpers ─────────────────────────────────────
 
@@ -329,15 +443,18 @@ class BaseProvider:
         """Execute a sync function with exponential backoff + jitter."""
         attempts = 0
         last_error = None
+        self._retry_count = 0
 
         while attempts <= retry:
             try:
                 response = func(messages, config, output_type)
+                self._retry_count = attempts
                 return response
             except Exception as e:
                 last_error = e
                 if self._is_retryable_error(e) and attempts < retry:
                     attempts += 1
+                    self._retry_count = attempts
                     delay = min(2 ** attempts + random.uniform(0, 1), 30)
                     logger.warning(
                         "Transient error (%s). Retrying in %.1fs... (%d/%d)",
@@ -354,15 +471,18 @@ class BaseProvider:
         """Execute an async function with exponential backoff + jitter."""
         attempts = 0
         last_error = None
+        self._retry_count = 0
 
         while attempts <= retry:
             try:
                 response = await func(messages, config, output_type)
+                self._retry_count = attempts
                 return response
             except Exception as e:
                 last_error = e
                 if self._is_retryable_error(e) and attempts < retry:
                     attempts += 1
+                    self._retry_count = attempts
                     delay = min(2 ** attempts + random.uniform(0, 1), 30)
                     logger.warning(
                         "Transient error (%s). Retrying in %.1fs... (%d/%d)",

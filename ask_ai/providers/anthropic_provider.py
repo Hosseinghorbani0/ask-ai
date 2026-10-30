@@ -7,6 +7,7 @@ except ImportError:
     anthropic = None
 
 from ..base import BaseProvider, Response
+from ..capabilities import Capabilities
 from ..config import AdvancedConfig
 from ..exceptions import APIKeyError, MediaTypeNotSupportedError, ProviderError, map_provider_exception
 
@@ -14,6 +15,14 @@ logger = logging.getLogger("ask_ai")
 
 
 class AnthropicProvider(BaseProvider):
+    def capabilities(self) -> Capabilities:
+        return Capabilities(
+            streaming=True,
+            async_streaming=True,
+            structured_output=True,
+            vision=True,
+        )
+
     def __init__(self, api_key: str = None, model: str = None, **kwargs):
         super().__init__(api_key, model, **kwargs)
         if not self.api_key:
