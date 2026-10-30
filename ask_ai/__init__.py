@@ -27,6 +27,7 @@ from .exceptions import (
 from .media import AudioObject, ImageObject
 from .observability import Observability, ResponseMetadata, Usage
 from .providers import Anthropic, Azure, Google, Groq, OpenAI, OpenRouter
+from .router import Router
 from .structured import parse_structured
 
 __all__ = [
@@ -67,4 +68,5 @@ __all__ = [
     "ResponseMetadata",
     "Usage",
     "Capabilities",
+    "Router",
 ]
