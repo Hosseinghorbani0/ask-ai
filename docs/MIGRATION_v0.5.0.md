@@ -31,3 +31,8 @@ callbacks. Existing responses remain compatible; metadata is available through
 
 Providers now expose `capabilities()` as advisory metadata. It can be used to
 choose a provider without changing existing request behavior.
+
+## Smart Router
+
+`Router` is an optional higher-level API. Existing provider instances and
+fallback behavior remain unchanged.
