@@ -245,7 +245,7 @@ print(response.raw)
 print(response.parsed.name)
 ```
 
-### 🌊 Streaming Events
+### Streaming Events
 
 Use typed events for text, completion, and errors while keeping the legacy
 `ask_stream()` API unchanged:
@@ -273,9 +273,9 @@ response = ai.ask("Explain tracing")
 print(response.metadata.latency_ms)
 ```
 
-### 🧩 Provider Capabilities
+### Provider Capabilities
 
-Inspect supported features before selecting a provider:
+Inspect advisory capability metadata before selecting a provider:
 
 ```python
 from ask_ai import OpenAI
@@ -285,22 +285,26 @@ if capabilities.structured_output:
     print("Structured output is available")
 ```
 
-### 🧭 Smart Router
+### Smart Router
 
 Route requests across providers using deterministic `cheapest`, `fastest`, or
-`most_reliable` policies:
+`most_reliable` policies. Supply static `profiles` for meaningful ordering:
 
 ```python
 from ask_ai import Router
 
-router = Router([openai, groq], policy="fastest")
+router = Router(
+    [openai, groq],
+    policy="fastest",
+    profiles={"OpenAI": {"latency_ms": 100}, "Groq": {"latency_ms": 50}},
+)
 response = router.ask("Explain routing")
 ```
 
 ### 🔒 Secure Media Downloads
 
-Provider media downloads can be constrained by HTTPS, host, MIME, size, and
-timeout policy:
+Provider media downloads can be constrained by HTTPS, host, detected MIME, size,
+and timeout policy. Redirects are intentionally rejected:
 
 ```python
 from ask_ai import MediaPolicy, download_media
@@ -315,7 +319,7 @@ data = download_media(
 )
 ```
 
-### 💬 Conversation Sessions
+### Conversation Sessions
 
 Create optional in-memory conversation state without changing the normal
 provider API:
@@ -334,7 +338,7 @@ print(session.ask("What is my name?").text)
 - [x] Provider Fallback chaining & Pydantic Structured Output support
 - [x] Multi-Modal Vision input (image to text) for all key providers
 - [ ] Native support for tools/function calling execution
-- [ ] Memory buffer / session-based conversation management
+- [x] Optional in-memory session-based conversation management
 
 ### 🏁 Roadmap 1.0 (Completed)
 - ~~[x] OpenAI, Groq, Gemini, Anthropic, Azure, OpenRouter support~~

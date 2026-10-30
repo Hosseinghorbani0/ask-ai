@@ -6,7 +6,7 @@
 
 - Validated structured responses for Pydantic, dataclasses, `TypedDict`, and JSON Schema.
 - Automatic validation retries with separate raw and parsed response access.
-- Typed sync and async streaming events: `TextDelta`, `ToolCall`, `UsageUpdate`, `Completed`, and `Error`.
+- Typed sync and async streaming events: `TextDelta`, `Completed`, and `Error`; `ToolCall` and `UsageUpdate` are reserved for future provider adapters.
 - Optional observability middleware with latency, retry, usage, and estimated cost metadata.
 - Provider capability registry through `capabilities()`.
 - Policy-based Smart Router for cheapest, fastest, and most reliable routing.
