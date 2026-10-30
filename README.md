@@ -315,6 +315,17 @@ data = download_media(
 )
 ```
 
+### 💬 Conversation Sessions
+
+Create optional in-memory conversation state without changing the normal
+provider API:
+
+```python
+session = OpenAI().session(max_messages=20)
+session.ask("My name is Ada.")
+print(session.ask("What is my name?").text)
+```
+
 ---
 
 ## 🗺️ Roadmap
