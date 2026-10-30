@@ -1,7 +1,6 @@
-import re
 import json
-from typing import Dict, Any, List, Union
-
+import re
+from typing import Any, Union
 
 # Pre-compiled regex patterns for performance
 _CODE_BLOCK_RE = re.compile(r'```(?:[\w]*\n)?(.*?)```', re.DOTALL)
@@ -38,7 +37,7 @@ def strip_tags(text: str) -> str:
     return text.strip()
 
 
-def parse_json(text: str) -> Union[Dict[str, Any], List[Any]]:
+def parse_json(text: str) -> Union[dict[str, Any], list[Any]]:
     """Tries to parse JSON from text, employing cleaning if necessary."""
     # Direct parse
     try:

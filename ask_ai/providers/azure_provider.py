@@ -33,7 +33,8 @@ class AzureProvider(OpenAIProvider):
         self.client = openai.AzureOpenAI(
             api_key=self.api_key,
             api_version=self.api_version,
-            azure_endpoint=self.endpoint
+            azure_endpoint=self.endpoint,
+            timeout=kwargs.get("timeout", 30.0),
         )
         self._async_client = None
 
@@ -54,7 +55,8 @@ class AzureProvider(OpenAIProvider):
             self._async_client = openai.AsyncAzureOpenAI(
                 api_key=self.api_key,
                 api_version=self.api_version,
-                azure_endpoint=self.endpoint
+                azure_endpoint=self.endpoint,
+                timeout=self.config.extra.get("timeout", 30.0),
             )
         return self._async_client
 

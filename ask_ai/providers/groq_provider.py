@@ -1,15 +1,15 @@
 import logging
-from typing import List, Dict, Iterator, AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 
 try:
-    from groq import Groq, AsyncGroq
+    from groq import AsyncGroq, Groq
 except ImportError:
     Groq = None
     AsyncGroq = None
 
 from ..base import BaseProvider, Response
 from ..config import AdvancedConfig
-from ..exceptions import APIKeyError, ProviderError, MediaTypeNotSupportedError
+from ..exceptions import APIKeyError, MediaTypeNotSupportedError, ProviderError, map_provider_exception
 
 logger = logging.getLogger("ask_ai")
 
@@ -23,14 +23,17 @@ class GroqProvider(BaseProvider):
         if Groq is None:
             raise ProviderError("Groq client library not installed. Run: pip install groq")
 
-        self.client = Groq(api_key=self.api_key)
+        self.client = Groq(api_key=self.api_key, timeout=self.config.extra.get("timeout", 30.0))
         self._async_client = None
 
     @property
     def async_client(self):
         """Lazy-load the async client only when needed."""
         if self._async_client is None:
-            self._async_client = AsyncGroq(api_key=self.api_key)
+            self._async_client = AsyncGroq(
+                api_key=self.api_key,
+                timeout=self.config.extra.get("timeout", 30.0),
+            )
         return self._async_client
 
     def _get_api_key_env_var(self):
@@ -45,7 +48,7 @@ class GroqProvider(BaseProvider):
 
     # ─── Helpers ───────────────────────────────────────────
 
-    def _build_chat_kwargs(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> dict:
+    def _build_chat_kwargs(self, messages: list[dict[str, str]], config: AdvancedConfig) -> dict:
         """Build kwargs for chat.completions.create."""
         kwargs = {
             "model": self.model,
@@ -55,6 +58,7 @@ class GroqProvider(BaseProvider):
             "top_p": config.top_p,
             "frequency_penalty": config.frequency_penalty,
             "presence_penalty": config.presence_penalty,
+            "timeout": config.extra.get("timeout"),
         }
         if config.stop:
             kwargs["stop"] = config.stop
@@ -63,7 +67,7 @@ class GroqProvider(BaseProvider):
 
     # ─── Sync ──────────────────────────────────────────────
 
-    def _send_request(self, messages: List[Dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
+    def _send_request(self, messages: list[dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
         if output_type in ("image", "audio"):
             raise MediaTypeNotSupportedError(f"Groq provider does not support {output_type} generation.")
 
@@ -72,9 +76,9 @@ class GroqProvider(BaseProvider):
             response = self.client.chat.completions.create(**kwargs)
             return Response(text=response.choices[0].message.content or "")
         except Exception as e:
-            raise ProviderError(f"Groq API Error: {e}") from e
+            raise map_provider_exception(e, "Groq", "API") from e
 
-    def _send_request_stream(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> Iterator[str]:
+    def _send_request_stream(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Iterator[str]:
         """Sync streaming with Groq."""
         try:
             kwargs = self._build_chat_kwargs(messages, config)
@@ -85,11 +89,11 @@ class GroqProvider(BaseProvider):
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
         except Exception as e:
-            raise ProviderError(f"Groq Streaming Error: {e}") from e
+            raise map_provider_exception(e, "Groq", "streaming") from e
 
     # ─── Async ─────────────────────────────────────────────
 
-    async def _send_request_async(self, messages: List[Dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
+    async def _send_request_async(self, messages: list[dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
         if output_type in ("image", "audio"):
             raise MediaTypeNotSupportedError(f"Groq provider does not support {output_type} generation.")
 
@@ -98,9 +102,9 @@ class GroqProvider(BaseProvider):
             response = await self.async_client.chat.completions.create(**kwargs)
             return Response(text=response.choices[0].message.content or "")
         except Exception as e:
-            raise ProviderError(f"Groq API Error: {e}") from e
+            raise map_provider_exception(e, "Groq", "API") from e
 
-    async def _send_request_stream_async(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> AsyncIterator[str]:
+    async def _send_request_stream_async(self, messages: list[dict[str, str]], config: AdvancedConfig) -> AsyncIterator[str]:
         """Async streaming with Groq."""
         try:
             kwargs = self._build_chat_kwargs(messages, config)
@@ -111,4 +115,4 @@ class GroqProvider(BaseProvider):
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
         except Exception as e:
-            raise ProviderError(f"Groq Streaming Error: {e}") from e
+            raise map_provider_exception(e, "Groq", "streaming") from e

@@ -160,7 +160,7 @@ for chunk in ai.ask_stream("Write a short story about a blue dragon"):
 
 # Async Streaming
 async def stream_example():
-    async for chunk in await ai.ask_stream_async("Write a short story"):
+    async for chunk in ai.ask_stream_async("Write a short story"):
         print(chunk, end="", flush=True)
 ```
 
@@ -226,15 +226,6 @@ print(user.age)   # 30
 
 ## 🗺️ Roadmap
 
-<<<<<<< HEAD
-- [x] OpenAI, Groq, Gemini, Anthropic, Azure, OpenRouter support
-- [x] Text to Image (DALL-E) and Text to Audio
-- [x] Automated Retry & Timeout controls
-- [x] Async Support (`await ask_async`)
-- [x] Provider Fallback (`ask(..., providers=[OpenAI, Groq])`)
-- [x] Streaming Support (`ask_stream`)
-- [x] Structured Output (Pydantic Support)
-=======
 ### 🚀 Roadmap 2.0 (Active)
 - [x] Provider Fallback chaining & Pydantic Structured Output support
 - [x] Multi-Modal Vision input (image to text) for all key providers
@@ -249,7 +240,6 @@ print(user.age)   # 30
 - ~~[x] Streaming Support (`ask_stream` / `ask_stream_async`)~~
 - ~~[x] Provider Fallback (`ask(..., providers=[OpenAI, Groq])`)~~
 - ~~[x] Structured Output (Pydantic Support)~~
->>>>>>> f0f7c6f (release: v0.4.1 - added OpenRouter image generation, fallback, structured output)
 
 ---
 

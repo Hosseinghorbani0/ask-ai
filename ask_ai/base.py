@@ -1,12 +1,13 @@
-import os
-import time
-import random
 import asyncio
 import logging
-from typing import Union, List, Dict, Any, Iterator, AsyncIterator
+import os
+import random
+import time
+from collections.abc import AsyncIterator, Iterator
+from typing import Any, Union
 
 from .config import AdvancedConfig
-from .media import ImageObject, AudioObject
+from .media import AudioObject, ImageObject
 
 logger = logging.getLogger("ask_ai")
 
@@ -36,7 +37,7 @@ class Response:
         return text
 
     @property
-    def json(self) -> Union[Dict[str, Any], list]:
+    def json(self) -> Union[dict[str, Any], list]:
         """Returns parsed JSON. If 'json=True' was passed, this is highly reliable."""
         from .utils import parse_json
         return parse_json(self._raw_text)
@@ -103,7 +104,9 @@ class BaseProvider:
         """
         new_conf = AdvancedConfig(**kwargs)
         for k, v in new_conf.__dict__.items():
-            if k == 'extra':
+            if k in ('extra', '_safe_mode_provided'):
+                continue
+            if k == 'safe_mode' and not new_conf._safe_mode_provided:
                 continue
             if v is not None:
                 setattr(self.config, k, v)
@@ -171,9 +174,14 @@ class BaseProvider:
                 else:
                     p_inst = p
                 try:
-                    yield from p_inst.ask_stream(query, **kwargs)
+                    emitted = False
+                    for chunk in p_inst.ask_stream(query, **kwargs):
+                        emitted = True
+                        yield chunk
                     return
                 except Exception as e:
+                    if emitted:
+                        raise
                     errors.append(f"{p_inst.__class__.__name__}: {e}")
                     logger.warning("Provider fallback failed for %s: %s", p_inst.__class__.__name__, e)
             from .exceptions import ProviderError
@@ -244,10 +252,14 @@ class BaseProvider:
                 else:
                     p_inst = p
                 try:
-                    async for chunk in await p_inst.ask_stream_async(query, **kwargs):
+                    emitted = False
+                    async for chunk in p_inst.ask_stream_async(query, **kwargs):
+                        emitted = True
                         yield chunk
                     return
                 except Exception as e:
+                    if emitted:
+                        raise
                     errors.append(f"{p_inst.__class__.__name__}: {e}")
                     logger.warning("Provider fallback failed for %s: %s", p_inst.__class__.__name__, e)
             from .exceptions import ProviderError
@@ -260,7 +272,7 @@ class BaseProvider:
 
     # ─── Config Helpers ─────────────────────────────────────
 
-    def _build_final_config(self, kwargs: Dict[str, Any]) -> AdvancedConfig:
+    def _build_final_config(self, kwargs: dict[str, Any]) -> AdvancedConfig:
         """Build final config by merging global config with per-request kwargs."""
         request_config = AdvancedConfig(**kwargs)
         final_config = self.config.merge(request_config)
@@ -271,7 +283,7 @@ class BaseProvider:
 
         return final_config
 
-    def _prepare_messages(self, query: str, config: AdvancedConfig) -> List[Dict[str, str]]:
+    def _prepare_messages(self, query: str, config: AdvancedConfig) -> list[dict[str, str]]:
         """Build the messages list from query, persona, and config."""
         messages = []
 
@@ -365,34 +377,36 @@ class BaseProvider:
 
     def _is_retryable_error(self, e: Exception) -> bool:
         """Dynamically detect rate limits and network timeouts across different provider SDKs."""
-        from .exceptions import AskAINetworkError, AskAIRateLimitError
-        if isinstance(e, (AskAINetworkError, AskAIRateLimitError)):
+        from .exceptions import (
+            AskAINetworkError,
+            AskAIRateLimitError,
+            ProviderRateLimitError,
+            ProviderTimeoutError,
+            ProviderUnavailableError,
+        )
+        if isinstance(e, (AskAINetworkError, AskAIRateLimitError, ProviderRateLimitError,
+                          ProviderTimeoutError, ProviderUnavailableError)):
             return True
-
-        err_str = str(e).lower()
-        err_cls = e.__class__.__name__.lower()
-
-        retryable_indicators = ("ratelimit", "rate_limit", "429", "timeout", "connection", "connecterror")
-        return any(indicator in err_cls or indicator in err_str for indicator in retryable_indicators)
+        return False
 
     # ─── Abstract Methods (Subclasses Must Implement) ──────
 
-    def _send_request(self, messages: List[Dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
+    def _send_request(self, messages: list[dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
         """Sync request — subclasses must implement."""
         raise NotImplementedError
 
-    async def _send_request_async(self, messages: List[Dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
+    async def _send_request_async(self, messages: list[dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
         """Async request — subclasses should override for native async."""
         # Default fallback: run sync in thread pool
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._send_request, messages, config, output_type)
 
-    def _send_request_stream(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> Iterator[str]:
+    def _send_request_stream(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Iterator[str]:
         """Sync streaming — subclasses should override."""
         from .exceptions import StreamNotSupportedError
         raise StreamNotSupportedError(f"{self.__class__.__name__} does not support streaming.")
 
-    async def _send_request_stream_async(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> AsyncIterator[str]:
+    async def _send_request_stream_async(self, messages: list[dict[str, str]], config: AdvancedConfig) -> AsyncIterator[str]:
         """Async streaming — subclasses should override for native async."""
         # Default fallback: wrap sync stream
         loop = asyncio.get_running_loop()
@@ -401,7 +415,7 @@ class BaseProvider:
 
     # ─── Tool Definitions for Smart Intent ─────────────────
 
-    def _get_media_tools(self) -> List[Dict[str, Any]]:
+    def _get_media_tools(self) -> list[dict[str, Any]]:
         return [
             {
                 "type": "function",

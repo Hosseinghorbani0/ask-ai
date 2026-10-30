@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List, Dict, Iterator, AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 
 try:
     import openai
@@ -8,9 +8,9 @@ except ImportError:
     openai = None
 
 from ..base import BaseProvider, Response
-from ..media import ImageObject, AudioObject
 from ..config import AdvancedConfig
-from ..exceptions import APIKeyError, ProviderError
+from ..exceptions import APIKeyError, ProviderError, map_provider_exception
+from ..media import AudioObject, ImageObject
 
 logger = logging.getLogger("ask_ai")
 
@@ -24,14 +24,17 @@ class OpenAIProvider(BaseProvider):
         if openai is None:
             raise ProviderError("OpenAI client library not installed. Run: pip install openai")
 
-        self.client = openai.OpenAI(api_key=self.api_key)
+        self.client = openai.OpenAI(api_key=self.api_key, timeout=self.config.extra.get("timeout", 30.0))
         self._async_client = None  # Lazy-loaded
 
     @property
     def async_client(self):
         """Lazy-load the async client only when needed."""
         if self._async_client is None:
-            self._async_client = openai.AsyncOpenAI(api_key=self.api_key)
+            self._async_client = openai.AsyncOpenAI(
+                api_key=self.api_key,
+                timeout=self.config.extra.get("timeout", 30.0),
+            )
         return self._async_client
 
     def _get_api_key_env_var(self):
@@ -42,7 +45,7 @@ class OpenAIProvider(BaseProvider):
 
     # ─── Sync ──────────────────────────────────────────────
 
-    def _send_request(self, messages: List[Dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
+    def _send_request(self, messages: list[dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
         # Explicit media
         if output_type == "image":
             return self._generate_image(messages, config)
@@ -52,15 +55,15 @@ class OpenAIProvider(BaseProvider):
         # Text / Smart Intent
         return self._generate_text_or_smart(messages, config)
 
-    def _generate_text_or_smart(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> Response:
+    def _generate_text_or_smart(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Response:
         try:
             kwargs = self._build_chat_kwargs(messages, config, include_tools=True)
             response = self.client.chat.completions.create(**kwargs)
             return self._process_chat_response(response, messages, config)
         except Exception as e:
-            raise ProviderError(f"OpenAI API Error: {e}") from e
+            raise map_provider_exception(e, "OpenAI", "API") from e
 
-    def _send_request_stream(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> Iterator[str]:
+    def _send_request_stream(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Iterator[str]:
         """Sync streaming — yields text chunks."""
         try:
             kwargs = self._build_chat_kwargs(messages, config, include_tools=False)
@@ -72,11 +75,11 @@ class OpenAIProvider(BaseProvider):
                     yield chunk.choices[0].delta.content
 
         except Exception as e:
-            raise ProviderError(f"OpenAI Streaming Error: {e}") from e
+            raise map_provider_exception(e, "OpenAI", "streaming") from e
 
     # ─── Async ─────────────────────────────────────────────
 
-    async def _send_request_async(self, messages: List[Dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
+    async def _send_request_async(self, messages: list[dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
         if output_type == "image":
             return await self._generate_image_async(messages, config)
         if output_type == "audio":
@@ -85,11 +88,11 @@ class OpenAIProvider(BaseProvider):
         try:
             kwargs = self._build_chat_kwargs(messages, config, include_tools=True)
             response = await self.async_client.chat.completions.create(**kwargs)
-            return self._process_chat_response(response, messages, config)
+            return await self._process_chat_response_async(response, messages, config)
         except Exception as e:
-            raise ProviderError(f"OpenAI API Error: {e}") from e
+            raise map_provider_exception(e, "OpenAI", "API") from e
 
-    async def _send_request_stream_async(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> AsyncIterator[str]:
+    async def _send_request_stream_async(self, messages: list[dict[str, str]], config: AdvancedConfig) -> AsyncIterator[str]:
         """Async streaming — yields text chunks."""
         try:
             kwargs = self._build_chat_kwargs(messages, config, include_tools=False)
@@ -101,11 +104,11 @@ class OpenAIProvider(BaseProvider):
                     yield chunk.choices[0].delta.content
 
         except Exception as e:
-            raise ProviderError(f"OpenAI Streaming Error: {e}") from e
+            raise map_provider_exception(e, "OpenAI", "streaming") from e
 
     # ─── Helpers ───────────────────────────────────────────
 
-    def _build_chat_kwargs(self, messages: List[Dict[str, str]], config: AdvancedConfig, include_tools: bool = False) -> dict:
+    def _build_chat_kwargs(self, messages: list[dict[str, str]], config: AdvancedConfig, include_tools: bool = False) -> dict:
         """Build kwargs for chat.completions.create, filtering None values."""
         kwargs = {
             "model": self.model,
@@ -115,6 +118,7 @@ class OpenAIProvider(BaseProvider):
             "top_p": config.top_p,
             "frequency_penalty": config.frequency_penalty,
             "presence_penalty": config.presence_penalty,
+            "timeout": config.extra.get("timeout"),
         }
         if config.stop:
             kwargs["stop"] = config.stop
@@ -151,9 +155,31 @@ class OpenAIProvider(BaseProvider):
 
         return Response(text=message.content or "")
 
+    async def _process_chat_response_async(self, response, messages, config) -> Response:
+        """Process a chat response without blocking the async event loop."""
+        message = response.choices[0].message
+
+        if message.tool_calls:
+            tool_call = message.tool_calls[0]
+            function_name = tool_call.function.name
+            arguments = json.loads(tool_call.function.arguments)
+
+            if function_name == "generate_image":
+                logger.info("Smart Intent: Image generation detected")
+                return await self._generate_image_async(
+                    [{"role": "user", "content": arguments.get("prompt")}], config
+                )
+            if function_name == "generate_speech":
+                logger.info("Smart Intent: Speech generation detected")
+                return await self._generate_audio_async(
+                    [{"role": "user", "content": arguments.get("text")}], config
+                )
+
+        return Response(text=message.content or "")
+
     # ─── Image Generation ──────────────────────────────────
 
-    def _generate_image(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> Response:
+    def _generate_image(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Response:
         prompt = messages[-1]["content"]
         try:
             response = self.client.images.generate(
@@ -166,16 +192,16 @@ class OpenAIProvider(BaseProvider):
             image_url = response.data[0].url
 
             # Download image bytes with httpx (falls back to urllib)
-            img_data = _download_bytes(image_url)
+            img_data = _download_bytes(image_url, config.extra.get("timeout", 30.0))
 
             return Response(
                 text=f"Generated image for: {prompt}",
                 media=ImageObject(img_data)
             )
         except Exception as e:
-            raise ProviderError(f"OpenAI Image Error: {e}") from e
+            raise map_provider_exception(e, "OpenAI", "image generation") from e
 
-    async def _generate_image_async(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> Response:
+    async def _generate_image_async(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Response:
         prompt = messages[-1]["content"]
         try:
             response = await self.async_client.images.generate(
@@ -186,72 +212,74 @@ class OpenAIProvider(BaseProvider):
                 n=1,
             )
             image_url = response.data[0].url
-            img_data = await _download_bytes_async(image_url)
+            img_data = await _download_bytes_async(image_url, config.extra.get("timeout", 30.0))
 
             return Response(
                 text=f"Generated image for: {prompt}",
                 media=ImageObject(img_data)
             )
         except Exception as e:
-            raise ProviderError(f"OpenAI Image Error: {e}") from e
+            raise map_provider_exception(e, "OpenAI", "image generation") from e
 
     # ─── Audio Generation ──────────────────────────────────
 
-    def _generate_audio(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> Response:
+    def _generate_audio(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Response:
         text = messages[-1]["content"]
         try:
             response = self.client.audio.speech.create(
                 model="tts-1",
                 voice="alloy",
-                input=text
+                input=text,
+                timeout=config.extra.get("timeout"),
             )
             return Response(
                 text=f"Generated audio for: {text}",
                 media=AudioObject(response.content)
             )
         except Exception as e:
-            raise ProviderError(f"OpenAI Audio Error: {e}") from e
+            raise map_provider_exception(e, "OpenAI", "audio generation") from e
 
-    async def _generate_audio_async(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> Response:
+    async def _generate_audio_async(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Response:
         text = messages[-1]["content"]
         try:
             response = await self.async_client.audio.speech.create(
                 model="tts-1",
                 voice="alloy",
-                input=text
+                input=text,
+                timeout=config.extra.get("timeout"),
             )
             return Response(
                 text=f"Generated audio for: {text}",
                 media=AudioObject(response.content)
             )
         except Exception as e:
-            raise ProviderError(f"OpenAI Audio Error: {e}") from e
+            raise map_provider_exception(e, "OpenAI", "audio generation") from e
 
 
 # ─── Download Helpers ──────────────────────────────────────
 
-def _download_bytes(url: str) -> bytes:
+def _download_bytes(url: str, timeout: float = 30.0) -> bytes:
     """Download bytes from URL. Uses httpx if available, falls back to urllib."""
     try:
         import httpx
-        with httpx.Client(timeout=30) as client:
+        with httpx.Client(timeout=timeout) as client:
             resp = client.get(url)
             resp.raise_for_status()
             return resp.content
     except ImportError:
         from urllib.request import urlopen
-        with urlopen(url, timeout=30) as resp:
+        with urlopen(url, timeout=timeout) as resp:
             return resp.read()
 
 
-async def _download_bytes_async(url: str) -> bytes:
+async def _download_bytes_async(url: str, timeout: float = 30.0) -> bytes:
     """Async download bytes from URL."""
     try:
         import httpx
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.get(url)
             resp.raise_for_status()
             return resp.content
     except ImportError:
         import asyncio
-        return await asyncio.get_running_loop().run_in_executor(None, _download_bytes, url)
+        return await asyncio.get_running_loop().run_in_executor(None, _download_bytes, url, timeout)

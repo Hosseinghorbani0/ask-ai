@@ -1,18 +1,19 @@
-import os
-from typing import List, Dict, Any
+﻿import os
+from typing import Any
 
 try:
     import openai
 except ImportError:
     openai = None
 
+from ..base import Response
 from ..config import AdvancedConfig
-from ..exceptions import APIKeyError, ProviderError
+from ..exceptions import APIKeyError, ProviderError, map_provider_exception
 from .openai_provider import OpenAIProvider
 
 
 class OpenRouterProvider(OpenAIProvider):
-    """OpenRouter provider — routes to multiple models via OpenAI-compatible API."""
+    """OpenRouter provider â€” routes to multiple models via OpenAI-compatible API."""
 
     def __init__(self, api_key: str = None, model: str = None, **kwargs):
         if openai is None:
@@ -49,7 +50,7 @@ class OpenRouterProvider(OpenAIProvider):
     def _get_default_model(self):
         return "openai/gpt-4o"
 
-    def _get_media_tools(self) -> List[Dict[str, Any]]:
+    def _get_media_tools(self) -> list[dict[str, Any]]:
         # OpenRouter does not support media endpoints
         return []
 
@@ -59,7 +60,7 @@ class OpenRouterProvider(OpenAIProvider):
             import httpx
         except ImportError:
             raise ProviderError("httpx client library is required for OpenRouter Image Generation. Run: pip install httpx")
-        
+
         from ..media import ImageObject
         from .openai_provider import _download_bytes
 
@@ -72,17 +73,22 @@ class OpenRouterProvider(OpenAIProvider):
             "prompt": prompt
         }
         try:
-            response = httpx.post("https://openrouter.ai/api/v1/images", json=payload, headers=headers, timeout=60.0)
+            response = httpx.post(
+                "https://openrouter.ai/api/v1/images",
+                json=payload,
+                headers=headers,
+                timeout=config.extra.get("timeout", 60.0),
+            )
             response.raise_for_status()
             data = response.json()
             image_url = data["data"][0]["url"]
-            img_data = _download_bytes(image_url)
+            img_data = _download_bytes(image_url, config.extra.get("timeout", 30.0))
             return Response(
                 text=f"Generated image via OpenRouter ({self.model}) for: {prompt}",
                 media=ImageObject(img_data)
             )
         except Exception as e:
-            raise ProviderError(f"OpenRouter Image Generation Error: {e}") from e
+            raise map_provider_exception(e, "OpenRouter", "image generation") from e
 
     async def _generate_image_async(self, messages, config):
         prompt = messages[-1]["content"]
@@ -104,17 +110,22 @@ class OpenRouterProvider(OpenAIProvider):
         }
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post("https://openrouter.ai/api/v1/images", json=payload, headers=headers, timeout=60.0)
+                response = await client.post(
+                    "https://openrouter.ai/api/v1/images",
+                    json=payload,
+                    headers=headers,
+                    timeout=config.extra.get("timeout", 60.0),
+                )
                 response.raise_for_status()
                 data = response.json()
             image_url = data["data"][0]["url"]
-            img_data = await _download_bytes_async(image_url)
+            img_data = await _download_bytes_async(image_url, config.extra.get("timeout", 30.0))
             return Response(
                 text=f"Generated image via OpenRouter ({self.model}) for: {prompt}",
                 media=ImageObject(img_data)
             )
         except Exception as e:
-            raise ProviderError(f"OpenRouter Image Generation Error: {e}") from e
+            raise map_provider_exception(e, "OpenRouter", "image generation") from e
 
     def _generate_audio(self, messages, config):
         raise ProviderError("OpenRouter does not support Audio Generation via this library.")

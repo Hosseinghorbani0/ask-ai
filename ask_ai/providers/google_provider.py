@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import List, Dict, Iterator, AsyncIterator
+from collections.abc import Iterator
 
 try:
     import google.generativeai as genai
@@ -9,7 +9,7 @@ except ImportError:
 
 from ..base import BaseProvider, Response
 from ..config import AdvancedConfig
-from ..exceptions import APIKeyError, ProviderError, MediaTypeNotSupportedError
+from ..exceptions import APIKeyError, MediaTypeNotSupportedError, ProviderError, map_provider_exception
 
 logger = logging.getLogger("ask_ai")
 
@@ -35,7 +35,7 @@ class GoogleProvider(BaseProvider):
 
     # ─── Helpers ───────────────────────────────────────────
 
-    def _convert_messages(self, messages: List[Dict[str, str]]):
+    def _convert_messages(self, messages: list[dict[str, str]]):
         """Convert OpenAI-style messages to Gemini format."""
         gemini_messages = []
         system_instruction = None
@@ -70,7 +70,7 @@ class GoogleProvider(BaseProvider):
 
     # ─── Sync ──────────────────────────────────────────────
 
-    def _send_request(self, messages: List[Dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
+    def _send_request(self, messages: list[dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
         if output_type in ("image", "audio"):
             raise MediaTypeNotSupportedError("Google provider currently supports text generation primarily.")
 
@@ -86,13 +86,17 @@ class GoogleProvider(BaseProvider):
             history = gemini_messages[:-1]
 
             chat = model.start_chat(history=history)
-            response = chat.send_message(last_msg["parts"][0], generation_config=generation_config)
+            response = chat.send_message(
+                last_msg["parts"][0],
+                generation_config=generation_config,
+                request_options={"timeout": config.extra.get("timeout")},
+            )
 
             return Response(text=response.text)
         except Exception as e:
-            raise ProviderError(f"Google API Error: {e}") from e
+            raise map_provider_exception(e, "Google", "API") from e
 
-    def _send_request_stream(self, messages: List[Dict[str, str]], config: AdvancedConfig) -> Iterator[str]:
+    def _send_request_stream(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Iterator[str]:
         """Sync streaming with Gemini."""
         try:
             gemini_messages, system_instruction = self._convert_messages(messages)
@@ -109,7 +113,8 @@ class GoogleProvider(BaseProvider):
             response = chat.send_message(
                 last_msg["parts"][0],
                 generation_config=generation_config,
-                stream=True
+                stream=True,
+                request_options={"timeout": config.extra.get("timeout")},
             )
 
             for chunk in response:
@@ -117,11 +122,11 @@ class GoogleProvider(BaseProvider):
                     yield chunk.text
 
         except Exception as e:
-            raise ProviderError(f"Google Streaming Error: {e}") from e
+            raise map_provider_exception(e, "Google", "streaming") from e
 
     # ─── Async ─────────────────────────────────────────────
 
-    async def _send_request_async(self, messages: List[Dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
+    async def _send_request_async(self, messages: list[dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
         if output_type in ("image", "audio"):
             raise MediaTypeNotSupportedError("Google provider currently supports text generation primarily.")
 
@@ -140,11 +145,15 @@ class GoogleProvider(BaseProvider):
 
             # google-generativeai uses sync API, wrap in executor
             loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
+            response = await asyncio.wait_for(loop.run_in_executor(
                 None,
-                lambda: chat.send_message(last_msg["parts"][0], generation_config=generation_config)
-            )
+                lambda: chat.send_message(
+                    last_msg["parts"][0],
+                    generation_config=generation_config,
+                    request_options={"timeout": config.extra.get("timeout")},
+                ),
+            ), timeout=config.extra.get("timeout"))
 
             return Response(text=response.text)
         except Exception as e:
-            raise ProviderError(f"Google API Error: {e}") from e
+            raise map_provider_exception(e, "Google", "API") from e
