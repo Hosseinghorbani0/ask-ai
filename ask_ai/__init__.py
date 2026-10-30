@@ -30,6 +30,7 @@ from .media_security import MediaPolicy, download_media
 from .observability import Observability, ResponseMetadata, Usage
 from .providers import Anthropic, Azure, Google, Groq, OpenAI, OpenRouter
 from .router import Router
+from .session import ConversationSession
 from .structured import parse_structured
 
 __all__ = [
@@ -72,6 +73,7 @@ __all__ = [
     "Usage",
     "Capabilities",
     "Router",
+    "ConversationSession",
     "MediaPolicy",
     "download_media",
 ]
