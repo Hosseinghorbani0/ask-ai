@@ -39,6 +39,7 @@ def test_structured_response_retries_validation_errors(monkeypatch):
     provider = object.__new__(OpenAI)
     provider.config = AdvancedConfig()
     provider.persona = None
+    provider.model = "test"
     responses = iter([
         Response('{"name": "Ada", "age": "wrong"}'),
         Response('{"name": "Ada", "age": 37}'),
