@@ -271,27 +271,14 @@ class OpenAIProvider(BaseProvider):
 # ─── Download Helpers ──────────────────────────────────────
 
 def _download_bytes(url: str, timeout: float = 30.0) -> bytes:
-    """Download bytes from URL. Uses httpx if available, falls back to urllib."""
-    try:
-        import httpx
-        with httpx.Client(timeout=timeout) as client:
-            resp = client.get(url)
-            resp.raise_for_status()
-            return resp.content
-    except ImportError:
-        from urllib.request import urlopen
-        with urlopen(url, timeout=timeout) as resp:
-            return resp.read()
+    from ..media_security import MediaPolicy, download_media
+    return download_media(url, MediaPolicy(timeout=timeout))
 
 
 async def _download_bytes_async(url: str, timeout: float = 30.0) -> bytes:
-    """Async download bytes from URL."""
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            return resp.content
-    except ImportError:
-        import asyncio
-        return await asyncio.get_running_loop().run_in_executor(None, _download_bytes, url, timeout)
+    import asyncio
+
+    from ..media_security import MediaPolicy, download_media
+    return await asyncio.get_running_loop().run_in_executor(
+        None, download_media, url, MediaPolicy(timeout=timeout)
+    )
