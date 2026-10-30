@@ -14,3 +14,9 @@ Install optional validation dependencies when needed:
 ```bash
 pip install "askai-python[structured]"
 ```
+
+## Streaming events
+
+`ask_stream()` and `ask_stream_async()` still yield strings. New code can use
+`ask_stream_events()` or `ask_stream_events_async()` for typed `TextDelta`,
+`Completed`, and `Error` events.
