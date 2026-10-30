@@ -7,12 +7,15 @@ except ImportError:
     openai = None
 
 from ..base import Response
+from ..capabilities import Capabilities
 from ..config import AdvancedConfig
 from ..exceptions import APIKeyError, ProviderError, map_provider_exception
 from .openai_provider import OpenAIProvider
 
 
 class OpenRouterProvider(OpenAIProvider):
+    def capabilities(self) -> Capabilities:
+        return Capabilities(streaming=True, async_streaming=True, structured_output=True)
     """OpenRouter provider â€” routes to multiple models via OpenAI-compatible API."""
 
     def __init__(self, api_key: str = None, model: str = None, **kwargs):
