@@ -5,6 +5,7 @@ ask-ai: A minimal Python SDK to switch between LLM providers in one line.
 __version__ = "0.4.3"
 
 from .base import Response
+from .capabilities import Capabilities
 from .config import AdvancedConfig
 from .events import Completed, Error, TextDelta, ToolCall, UsageUpdate
 from .exceptions import (
@@ -65,4 +66,5 @@ __all__ = [
     "Observability",
     "ResponseMetadata",
     "Usage",
+    "Capabilities",
 ]
