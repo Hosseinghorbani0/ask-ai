@@ -147,6 +147,7 @@ class BaseProvider:
             metadata = ResponseMetadata(
                 **{**metadata.__dict__, "estimated_cost": middleware.cost(self.model, usage)}
             )
+            response.metadata = metadata
             middleware.emit({"type": "completed", "metadata": metadata, "response": response})
         return response
 
