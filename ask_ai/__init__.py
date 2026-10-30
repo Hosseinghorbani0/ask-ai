@@ -14,6 +14,7 @@ from .exceptions import (
     AskAINetworkError,
     AskAIParsingError,
     AskAIRateLimitError,
+    MediaSecurityError,
     MediaTypeNotSupportedError,
     ProviderAuthError,
     ProviderError,
@@ -25,6 +26,7 @@ from .exceptions import (
     StructuredValidationError,
 )
 from .media import AudioObject, ImageObject
+from .media_security import MediaPolicy, download_media
 from .observability import Observability, ResponseMetadata, Usage
 from .providers import Anthropic, Azure, Google, Groq, OpenAI, OpenRouter
 from .router import Router
@@ -56,6 +58,7 @@ __all__ = [
     "ProviderInvalidRequestError",
     "ProviderUnavailableError",
     "MediaTypeNotSupportedError",
+    "MediaSecurityError",
     "StreamNotSupportedError",
     "StructuredValidationError",
     "parse_structured",
@@ -69,4 +72,6 @@ __all__ = [
     "Usage",
     "Capabilities",
     "Router",
+    "MediaPolicy",
+    "download_media",
 ]
