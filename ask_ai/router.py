@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 from dataclasses import fields
-from typing import Any
+from typing import Any, Optional
 
 from .base import BaseProvider
 from .capabilities import Capabilities
@@ -14,7 +14,7 @@ class Router:
         self,
         providers: Iterable[Any],
         policy: str = "most_reliable",
-        profiles: dict[str, dict[str, float]] | None = None,
+        profiles: Optional[dict[str, dict[str, float]]] = None,
     ):
         if policy not in {"cheapest", "fastest", "most_reliable"}:
             raise ValueError("policy must be cheapest, fastest, or most_reliable")

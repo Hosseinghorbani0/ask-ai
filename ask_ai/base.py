@@ -4,7 +4,7 @@ import os
 import random
 import time
 from collections.abc import AsyncIterator, Iterator
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 from .capabilities import Capabilities
 from .config import AdvancedConfig
@@ -122,7 +122,7 @@ class BaseProvider:
         self._middleware.append(middleware)
         return self
 
-    def session(self, max_messages: int | None = None):
+    def session(self, max_messages: Optional[int] = None):
         from .session import ConversationSession
         return ConversationSession(self, max_messages=max_messages)
 

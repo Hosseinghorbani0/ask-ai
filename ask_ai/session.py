@@ -1,11 +1,11 @@
 from collections.abc import AsyncIterator, Iterator
-from typing import Any
+from typing import Any, Optional
 
 
 class ConversationSession:
     """In-memory conversation state backed by an existing provider."""
 
-    def __init__(self, provider: Any, max_messages: int | None = None):
+    def __init__(self, provider: Any, max_messages: Optional[int] = None):
         self.provider = provider
         self.max_messages = max_messages
         self.messages: list[dict[str, str]] = []
