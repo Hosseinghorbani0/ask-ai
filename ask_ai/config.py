@@ -1,4 +1,6 @@
-from typing import Optional, Dict, Any, List
+from typing import Any, Optional
+
+_NOT_PROVIDED = object()
 
 
 class AdvancedConfig:
@@ -13,9 +15,9 @@ class AdvancedConfig:
         top_p: Optional[float] = None,
         frequency_penalty: Optional[float] = None,
         presence_penalty: Optional[float] = None,
-        stop: Optional[List[str]] = None,
+        stop: Optional[list[str]] = None,
         system_message: Optional[str] = None,
-        safe_mode: bool = False,
+        safe_mode: Any = _NOT_PROVIDED,
         **kwargs
     ):
         self.temperature = temperature
@@ -35,17 +37,20 @@ class AdvancedConfig:
             kwargs.pop("system", None)
 
         self.system_message = system_message
-        self.safe_mode = safe_mode
-        self.extra: Dict[str, Any] = kwargs
+        self.safe_mode = False if safe_mode is _NOT_PROVIDED else safe_mode
+        self._safe_mode_provided = safe_mode is not _NOT_PROVIDED
+        self.extra: dict[str, Any] = kwargs
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert config to a dictionary, filtering None values."""
         result = {}
         for k, v in self.__dict__.items():
-            if k == 'extra':
+            if k == 'extra' or k == '_safe_mode_provided':
                 continue
             if v is not None:
                 result[k] = v
+        if self.extra:
+            result["extra"] = dict(self.extra)
         return result
 
     def merge(self, other: 'AdvancedConfig') -> 'AdvancedConfig':
@@ -57,15 +62,20 @@ class AdvancedConfig:
 
         # Copy self values
         for k, v in self.__dict__.items():
-            if k == 'extra':
+            if k in ('extra', '_safe_mode_provided'):
                 continue
             setattr(merged, k, v)
+        merged._safe_mode_provided = self._safe_mode_provided
 
         # Override with other values (only non-None)
         for k, v in other.__dict__.items():
-            if k == 'extra':
+            if k in ('extra', '_safe_mode_provided'):
                 continue
-            if v is not None:
+            if k == 'safe_mode':
+                if other._safe_mode_provided:
+                    setattr(merged, k, v)
+                    merged._safe_mode_provided = True
+            elif v is not None:
                 setattr(merged, k, v)
 
         # Deep merge extra dicts
@@ -76,6 +86,6 @@ class AdvancedConfig:
         return merged
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'AdvancedConfig':
+    def from_dict(cls, data: dict[str, Any]) -> 'AdvancedConfig':
         """Create an AdvancedConfig from a dictionary."""
         return cls(**data)
