@@ -1,16 +1,7 @@
-import sys
 import argparse
-from . import __version__
-from . import (
-    OpenAI,
-    Groq,
-    Google,
-    OpenRouter,
-    Azure,
-    Anthropic,
-    AskAIError
-)
+import sys
 
+from . import Anthropic, AskAIError, Azure, Google, Groq, OpenAI, OpenRouter, __version__
 
 PROVIDER_MAP = {
     "openai": OpenAI,
@@ -70,14 +61,9 @@ def main():
 
         # Stream or regular
         if args.stream:
-            try:
-                for chunk in ai.ask_stream(args.query, **ask_kwargs):
-                    print(chunk, end="", flush=True)
-                print()  # newline at end
-            except Exception:
-                # Fallback to non-streaming if provider doesn't support it
-                response = ai.ask(args.query, **ask_kwargs)
-                print(response.text)
+            for chunk in ai.ask_stream(args.query, **ask_kwargs):
+                print(chunk, end="", flush=True)
+            print()  # newline at end
         else:
             response = ai.ask(args.query, **ask_kwargs)
 
