@@ -8,7 +8,7 @@ for filename in os.listdir(target_dir):
         path = os.path.join(target_dir, filename)
         print(f"Processing {filename}...")
 
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             content = f.read()
 
         # Update Branding/Pip name
