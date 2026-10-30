@@ -9,6 +9,7 @@ from typing import Any, Union
 from .config import AdvancedConfig
 from .events import Completed, Error, TextDelta
 from .media import AudioObject, ImageObject
+from .observability import Observability, ResponseMetadata, Usage
 
 logger = logging.getLogger("ask_ai")
 
@@ -17,10 +18,18 @@ class Response:
     """
     Unified response object for all ask-ai requests.
     """
-    def __init__(self, text: str = "", media: Union[ImageObject, AudioObject, None] = None, response_model: Any = None, **kwargs):
+    def __init__(
+        self,
+        text: str = "",
+        media: Union[ImageObject, AudioObject, None] = None,
+        response_model: Any = None,
+        metadata: Any = None,
+        **kwargs,
+    ):
         self._raw_text = text
         self.media = media
         self.response_model = response_model
+        self.metadata = metadata
         self._kwargs = kwargs
 
     @property
@@ -105,6 +114,32 @@ class BaseProvider:
         self.model = model or self._get_default_model()
         self.persona = persona
         self.config = AdvancedConfig(**kwargs)
+        self._middleware: list[Observability] = []
+
+    def use(self, middleware: Observability) -> "BaseProvider":
+        """Attach optional observability middleware and return this provider."""
+        self._middleware.append(middleware)
+        return self
+
+    def _attach_metadata(self, response: Response, started_at: float, retry_count: int) -> Response:
+        usage = getattr(response, "usage", None)
+        if isinstance(usage, dict):
+            usage = Usage(**usage)
+        metadata = ResponseMetadata(
+            provider=self.__class__.__name__,
+            model=self.model,
+            latency_ms=(time.perf_counter() - started_at) * 1000,
+            retry_count=retry_count,
+            usage=usage,
+            estimated_cost=None,
+        )
+        response.metadata = metadata
+        for middleware in getattr(self, "_middleware", []):
+            metadata = ResponseMetadata(
+                **{**metadata.__dict__, "estimated_cost": middleware.cost(self.model, usage)}
+            )
+            middleware.emit({"type": "completed", "metadata": metadata, "response": response})
+        return response
 
     def _get_api_key_env_var(self) -> str:
         """Subclasses should return the env var name, e.g. 'OPENAI_API_KEY'"""
@@ -166,6 +201,7 @@ class BaseProvider:
         response_model = kwargs.get('response_model')
         validation_retries = int(kwargs.get("validation_retries", 0) or 0)
 
+        started_at = time.perf_counter()
         response = None
         for validation_attempt in range(validation_retries + 1):
             response = self._execute_with_retry(
@@ -182,7 +218,7 @@ class BaseProvider:
                     raise
         if response_model:
             response.response_model = response_model
-        return response
+        return self._attach_metadata(response, started_at, getattr(self, "_retry_count", 0))
 
     def ask_stream(self, query: str, **kwargs) -> Iterator[str]:
         """
@@ -269,6 +305,7 @@ class BaseProvider:
         response_model = kwargs.get('response_model')
         validation_retries = int(kwargs.get("validation_retries", 0) or 0)
 
+        started_at = time.perf_counter()
         response = None
         for validation_attempt in range(validation_retries + 1):
             response = await self._execute_with_retry_async(
@@ -285,7 +322,7 @@ class BaseProvider:
                     raise
         if response_model:
             response.response_model = response_model
-        return response
+        return self._attach_metadata(response, started_at, getattr(self, "_retry_count", 0))
 
     async def ask_stream_async(self, query: str, **kwargs) -> AsyncIterator[str]:
         """
@@ -396,15 +433,18 @@ class BaseProvider:
         """Execute a sync function with exponential backoff + jitter."""
         attempts = 0
         last_error = None
+        self._retry_count = 0
 
         while attempts <= retry:
             try:
                 response = func(messages, config, output_type)
+                self._retry_count = attempts
                 return response
             except Exception as e:
                 last_error = e
                 if self._is_retryable_error(e) and attempts < retry:
                     attempts += 1
+                    self._retry_count = attempts
                     delay = min(2 ** attempts + random.uniform(0, 1), 30)
                     logger.warning(
                         "Transient error (%s). Retrying in %.1fs... (%d/%d)",
@@ -421,15 +461,18 @@ class BaseProvider:
         """Execute an async function with exponential backoff + jitter."""
         attempts = 0
         last_error = None
+        self._retry_count = 0
 
         while attempts <= retry:
             try:
                 response = await func(messages, config, output_type)
+                self._retry_count = attempts
                 return response
             except Exception as e:
                 last_error = e
                 if self._is_retryable_error(e) and attempts < retry:
                     attempts += 1
+                    self._retry_count = attempts
                     delay = min(2 ** attempts + random.uniform(0, 1), 30)
                     logger.warning(
                         "Transient error (%s). Retrying in %.1fs... (%d/%d)",
