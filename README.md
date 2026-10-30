@@ -245,6 +245,21 @@ print(response.raw)
 print(response.parsed.name)
 ```
 
+### 🌊 Streaming Events
+
+Use typed events for text, completion, and errors while keeping the legacy
+`ask_stream()` API unchanged:
+
+```python
+from ask_ai import Completed, OpenAI, TextDelta
+
+for event in OpenAI().ask_stream_events("Tell me a story"):
+    if isinstance(event, TextDelta):
+        print(event.text, end="")
+    elif isinstance(event, Completed):
+        print("\nDone")
+```
+
 ---
 
 ## 🗺️ Roadmap
