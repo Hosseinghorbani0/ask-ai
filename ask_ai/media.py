@@ -1,16 +1,15 @@
-import os
-import sys
-import platform
-import subprocess
-import tempfile
+import atexit
 import base64
 import hashlib
-import struct
 import logging
-import atexit
-from pathlib import Path
+import os
+import platform
+import struct
+import subprocess
+import tempfile
 from io import BytesIO
-from typing import Union, Tuple, Dict, Any, Optional, BinaryIO, TypeVar, Type
+from pathlib import Path
+from typing import Any, BinaryIO, Optional, TypeVar, Union
 
 # Setup structured logger for the media library
 logger = logging.getLogger("media_engine")
@@ -71,7 +70,7 @@ class HeaderInspector:
     """Inspects magic byte headers to accurately detect media formats and MIME types."""
 
     @staticmethod
-    def detect_type(data: bytes) -> Tuple[str, str, str]:
+    def detect_type(data: bytes) -> tuple[str, str, str]:
         """
         Detects (category, format, mime_type) from binary header signature.
         Returns ('generic', 'bin', 'application/octet-stream') if unrecognized.
@@ -114,7 +113,7 @@ class ImageHeaderParser:
     """Extracts image dimensions directly from binary header chunks."""
 
     @staticmethod
-    def parse_dimensions(data: bytes, image_format: str) -> Tuple[Optional[int], Optional[int]]:
+    def parse_dimensions(data: bytes, image_format: str) -> tuple[Optional[int], Optional[int]]:
         """Extracts (width, height) without requiring external dependencies like Pillow."""
         try:
             if image_format == "png" and len(data) >= 24:
@@ -148,7 +147,7 @@ class AudioHeaderParser:
     """Parses audio metadata (duration, sample rate, channels) from raw audio frames."""
 
     @staticmethod
-    def parse_wav_info(data: bytes) -> Dict[str, Any]:
+    def parse_wav_info(data: bytes) -> dict[str, Any]:
         """Extracts duration, channels, and sample rate from WAV header."""
         info = {"duration": None, "sample_rate": None, "channels": None}
         try:
@@ -156,10 +155,10 @@ class AudioHeaderParser:
                 channels = struct.unpack("<H", data[22:24])[0]
                 sample_rate = struct.unpack("<I", data[24:28])[0]
                 byte_rate = struct.unpack("<I", data[28:32])[0]
-                
+
                 info["channels"] = channels
                 info["sample_rate"] = sample_rate
-                
+
                 if byte_rate > 0:
                     info["duration"] = round(len(data) / byte_rate, 2)
         except Exception as e:
@@ -176,7 +175,7 @@ class MediaObject:
     def __init__(self, data: Union[bytes, bytearray], media_type: str = "generic", mime_type: Optional[str] = None):
         if not isinstance(data, (bytes, bytearray)):
             raise TypeError(f"Media data must be bytes or bytearray, got {type(data).__name__}")
-        
+
         if len(data) == 0:
             raise ValueError("Media data payload cannot be empty.")
 
@@ -221,7 +220,7 @@ class MediaObject:
     def save(self, destination: Union[str, Path, BinaryIO]) -> Path:
         """
         Saves media payload to a file path or binary stream.
-        
+
         Args:
             destination: File path (str/Path) or writeable binary stream object.
         Returns:
@@ -232,10 +231,10 @@ class MediaObject:
                 destination.write(self._data)
                 destination.flush()
                 return Path("stream")
-            
+
             out_path = Path(destination).expanduser().resolve()
             out_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             with open(out_path, "wb") as f:
                 f.write(self._data)
             return out_path
@@ -251,7 +250,7 @@ class MediaObject:
         return f"data:{self._mime_type};base64,{self.to_base64()}"
 
     @classmethod
-    def from_file(cls: Type[T], path: Union[str, Path]) -> T:
+    def from_file(cls: type[T], path: Union[str, Path]) -> T:
         """Constructs a MediaObject instance from a local file path."""
         file_path = Path(path).expanduser().resolve()
         if not file_path.exists():
@@ -261,7 +260,7 @@ class MediaObject:
         return cls(data)
 
     @classmethod
-    def from_base64(cls: Type[T], base64_str: str) -> T:
+    def from_base64(cls: type[T], base64_str: str) -> T:
         """Constructs a MediaObject instance from a Base64 string or Data URI."""
         clean_b64 = base64_str
         if "," in base64_str:
@@ -303,7 +302,7 @@ class ImageObject(MediaObject):
         self._width, self._height = ImageHeaderParser.parse_dimensions(self._data, self._format)
 
     @property
-    def dimensions(self) -> Tuple[Optional[int], Optional[int]]:
+    def dimensions(self) -> tuple[Optional[int], Optional[int]]:
         """Returns (width, height) tuple if dimensions are available."""
         if self._width is None or self._height is None:
             # Fallback to PIL if binary header inspection missed it
@@ -343,7 +342,7 @@ class ImageObject(MediaObject):
         except ImportError:
             raise MediaError("NumPy is not installed. Install via `pip install numpy` to use to_numpy().")
 
-    def show((self) -> None:
+    def show(self) -> None:
         """Displays the image using Pillow UI or default OS application viewer."""
         try:
             pil_img = self.to_pil()
