@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator, Iterator
 from typing import Any, Union
 
 from .config import AdvancedConfig
+from .events import Completed, Error, TextDelta
 from .media import AudioObject, ImageObject
 
 logger = logging.getLogger("ask_ai")
@@ -219,6 +220,19 @@ class BaseProvider:
         messages = self._prepare_messages(query, final_config)
         yield from self._send_request_stream(messages, final_config)
 
+    def ask_stream_events(self, query: str, **kwargs) -> Iterator[Any]:
+        """Yield typed events while preserving the legacy text stream API."""
+        emitted_chunks = 0
+        text_parts = []
+        try:
+            for chunk in self.ask_stream(query, **kwargs):
+                emitted_chunks += 1
+                text_parts.append(chunk)
+                yield TextDelta(text=chunk, index=emitted_chunks - 1)
+            yield Completed(response=Response(text="".join(text_parts)))
+        except Exception as error:
+            yield Error(error=error, emitted_chunks=emitted_chunks)
+
     # ─── Async API ──────────────────────────────────────────
 
     async def ask_async(self, query: str, **kwargs) -> Response:
@@ -309,6 +323,19 @@ class BaseProvider:
         messages = self._prepare_messages(query, final_config)
         async for chunk in self._send_request_stream_async(messages, final_config):
             yield chunk
+
+    async def ask_stream_events_async(self, query: str, **kwargs) -> AsyncIterator[Any]:
+        """Yield typed events while preserving the legacy async text stream API."""
+        emitted_chunks = 0
+        text_parts = []
+        try:
+            async for chunk in self.ask_stream_async(query, **kwargs):
+                emitted_chunks += 1
+                text_parts.append(chunk)
+                yield TextDelta(text=chunk, index=emitted_chunks - 1)
+            yield Completed(response=Response(text="".join(text_parts)))
+        except Exception as error:
+            yield Error(error=error, emitted_chunks=emitted_chunks)
 
     # ─── Config Helpers ─────────────────────────────────────
 
