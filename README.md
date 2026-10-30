@@ -297,6 +297,24 @@ router = Router([openai, groq], policy="fastest")
 response = router.ask("Explain routing")
 ```
 
+### 🔒 Secure Media Downloads
+
+Provider media downloads can be constrained by HTTPS, host, MIME, size, and
+timeout policy:
+
+```python
+from ask_ai import MediaPolicy, download_media
+
+data = download_media(
+    "https://example.com/image.png",
+    MediaPolicy(
+        max_bytes=10 * 1024 * 1024,
+        allowed_mime_types={"image/png"},
+        allowed_hosts={"example.com"},
+    ),
+)
+```
+
 ---
 
 ## 🗺️ Roadmap
