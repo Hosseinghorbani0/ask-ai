@@ -42,3 +42,8 @@ fallback behavior remain unchanged.
 Use `MediaPolicy` and `download_media` for constrained downloads. Existing
 provider-generated media continues to work, but now uses HTTPS and size
 validation.
+
+## Conversation sessions
+
+Use `provider.session()` for optional in-memory history. Normal `ask()` calls
+remain stateless and unchanged.
