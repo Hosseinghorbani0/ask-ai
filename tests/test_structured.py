@@ -50,3 +50,9 @@ def test_structured_response_retries_validation_errors(monkeypatch):
     result = provider.ask("extract", response_model=User, validation_retries=1)
 
     assert result.parsed == User("Ada", 37)
+
+
+def test_release_version_is_0_5_0():
+    import ask_ai
+
+    assert ask_ai.__version__ == "0.5.0"
