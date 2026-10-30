@@ -68,7 +68,7 @@ def test_all_package_modules_and_providers_import():
 
 
 def test_release_version_and_requirements_are_aligned():
-    assert ask_ai.__version__ == "0.4.3"
+    assert ask_ai.__version__ == "0.5.0"
     requirements = open("ask_ai/requirements.txt", encoding="utf-8").read()
     for package in ("openai", "anthropic", "google-generativeai", "groq", "Pillow", "httpx"):
         assert package in requirements
