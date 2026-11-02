@@ -85,7 +85,7 @@ def test_pydantic_validation_exception_is_normalized():
         parse_structured("{}", Model)
 
 
-def test_release_version_is_0_6_0rc1():
+def test_release_version_is_0_6_0():
     import ask_ai
 
-    assert ask_ai.__version__ == "0.6.0rc1"
+    assert ask_ai.__version__ == "0.6.0"
