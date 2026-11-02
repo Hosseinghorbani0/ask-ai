@@ -262,8 +262,10 @@ for event in OpenAI().ask_stream_events("Tell me a story"):
 
 ### 📊 Observability
 
-Attach optional middleware to receive latency, retry, provider, model, usage,
-and estimated cost metadata:
+Attach optional middleware to receive provider, model, latency, and retry
+metadata. Provider usage extraction and failure-reason reporting are not
+supported yet. Estimated cost is only calculated when a response already
+contains usage data; the bundled provider adapters do not currently supply it:
 
 ```python
 from ask_ai import Observability, OpenAI
@@ -337,6 +339,8 @@ session = OpenAI().session(max_messages=20)
 session.ask("My name is Ada.")
 print(session.ask("What is my name?").text)
 ```
+
+Session requests do not support `response_model` validation yet.
 
 ---
 

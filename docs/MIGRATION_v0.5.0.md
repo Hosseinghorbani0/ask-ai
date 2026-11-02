@@ -29,7 +29,10 @@ types and are not emitted by the current adapters.
 
 Use `provider.use(Observability(...))` to attach optional metadata and event
 callbacks. Existing responses remain compatible; metadata is available through
-`response.metadata`.
+`response.metadata`. Provider token-usage extraction and `failure_reason`
+reporting are not supported yet. Estimated cost is only calculated when a
+response already contains usage data; bundled provider adapters do not
+currently provide it.
 
 ## Capability registry
 
@@ -56,4 +59,5 @@ private-network URLs. Redirects are rejected rather than followed.
 ## Conversation sessions
 
 Use `provider.session()` for optional in-memory history. Normal `ask()` calls
-remain stateless and unchanged.
+remain stateless and unchanged. Session calls do not support `response_model`
+validation yet.
