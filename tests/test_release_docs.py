@@ -34,3 +34,13 @@ def test_publish_workflow_is_gated_on_published_releases_and_tests():
     assert "PYPI_API_TOKEN" in workflow
     action_shas = re.findall(r"^\s+- uses: [^@\s]+@([0-9a-f]+)$", workflow, re.MULTILINE)
     assert action_shas and all(len(sha) == 40 for sha in action_shas)
+
+
+def test_ci_checks_feature_pushes_and_built_wheel():
+    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    assert 'branches: ["master", "main", "feat/**"]' in workflow
+    assert "python -m build" in workflow
+    assert "python -m twine check dist/*" in workflow
+    assert "wheel-smoke" in workflow
+    assert "ask-ai" in workflow
