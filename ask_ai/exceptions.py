@@ -88,6 +88,8 @@ def map_provider_exception(error: Exception, provider: str, operation: str = "re
     if status_code is None:
         response = getattr(error, "response", None)
         status_code = getattr(response, "status_code", None)
+    if status_code is None:
+        status_code = getattr(error, "code", None)
 
     error_text = str(error).lower()
     error_name = error.__class__.__name__.lower()

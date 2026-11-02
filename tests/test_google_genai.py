@@ -2,7 +2,15 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
+from google.genai.errors import ClientError, ServerError
+
 from ask_ai import AdvancedConfig
+from ask_ai.exceptions import (
+    ProviderAuthError,
+    ProviderRateLimitError,
+    ProviderUnavailableError,
+    map_provider_exception,
+)
 from ask_ai.providers import google_provider
 from ask_ai.providers.google_provider import GoogleProvider
 
@@ -166,3 +174,16 @@ def test_python_floor_and_ci_matrix_are_updated():
     assert '"3.9"' not in ci
     assert all(f'"3.{minor}"' in ci for minor in range(10, 14))
     assert "Python 3.10+" in readme
+
+
+def test_google_genai_exception_codes_map_to_retry_and_auth_categories():
+    cases = (
+        (ClientError(401, {"message": "unauthorized"}), ProviderAuthError),
+        (ClientError(403, {"message": "forbidden"}), ProviderAuthError),
+        (ClientError(429, {"message": "rate limited"}), ProviderRateLimitError),
+        (ServerError(500, {"message": "server error"}), ProviderUnavailableError),
+        (ServerError(503, {"message": "unavailable"}), ProviderUnavailableError),
+    )
+
+    for error, expected in cases:
+        assert isinstance(map_provider_exception(error, "Google"), expected)
