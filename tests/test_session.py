@@ -79,3 +79,51 @@ def test_session_async_and_streaming():
         assert chunks == ["one|one|two"]
 
     asyncio.run(run())
+
+
+def test_session_sync_stream_retries_before_first_chunk(monkeypatch):
+    from ask_ai.exceptions import ProviderTimeoutError
+
+    provider = SessionProvider(api_key="test")
+    attempts = 0
+
+    def stream(messages, config):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise ProviderTimeoutError("temporary timeout")
+        yield "recovered"
+
+    monkeypatch.setattr(provider, "_send_request_stream", stream)
+    monkeypatch.setattr("ask_ai.base.time.sleep", lambda delay: None)
+
+    chunks = list(provider.session().ask_stream("hello", retry=1))
+
+    assert chunks == ["recovered"]
+    assert attempts == 2
+
+
+def test_session_async_stream_retries_before_first_chunk(monkeypatch):
+    from ask_ai.exceptions import ProviderTimeoutError
+
+    provider = SessionProvider(api_key="test")
+    attempts = 0
+
+    async def stream(messages, config):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise ProviderTimeoutError("temporary timeout")
+        yield "recovered"
+
+    async def no_sleep(delay):
+        return None
+
+    monkeypatch.setattr(provider, "_send_request_stream_async", stream)
+    monkeypatch.setattr("ask_ai.base.asyncio.sleep", no_sleep)
+
+    async def collect():
+        return [chunk async for chunk in provider.session().ask_stream_async("hello", retry=1)]
+
+    assert asyncio.run(collect()) == ["recovered"]
+    assert attempts == 2
