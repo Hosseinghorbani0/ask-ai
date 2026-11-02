@@ -304,7 +304,10 @@ response = router.ask("Explain routing")
 ### 🔒 Secure Media Downloads
 
 Provider media downloads can be constrained by HTTPS, host, detected MIME, size,
-and timeout policy. Redirects are intentionally rejected:
+and timeout policy. DNS results resolving to private, loopback, link-local, or
+reserved IP addresses are rejected by default. `allowed_hosts` is optional;
+set it for an explicit hostname allowlist. Only opt in to `allow_private=True`
+when downloading from trusted private-network hosts. Redirects are rejected:
 
 ```python
 from ask_ai import MediaPolicy, download_media

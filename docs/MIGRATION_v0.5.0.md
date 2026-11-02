@@ -47,7 +47,11 @@ latency, cost, or reliability values for meaningful ordering.
 
 Use `MediaPolicy` and `download_media` for constrained downloads. Existing
 provider-generated media continues to work, but now uses HTTPS, size, and
-content-based MIME validation. Redirects are rejected rather than followed.
+content-based MIME validation. DNS answers for private, loopback, link-local,
+and reserved addresses are rejected by default. `allowed_hosts` is optional;
+set it when downloads must be limited to known hostnames. `allow_private=True`
+opts out of the IP-range restriction and should only be used with trusted
+private-network URLs. Redirects are rejected rather than followed.
 
 ## Conversation sessions
 

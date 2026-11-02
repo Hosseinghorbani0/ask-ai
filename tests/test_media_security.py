@@ -1,8 +1,21 @@
+import socket
+
 import pytest
 
 from ask_ai import MediaPolicy, download_media
 from ask_ai.exceptions import MediaSecurityError
 from ask_ai.media import ImageObject, MediaError
+
+
+@pytest.fixture(autouse=True)
+def mock_public_dns(monkeypatch):
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda host, port, type: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))
+        ],
+    )
 
 
 def test_media_policy_rejects_insecure_and_unallowlisted_urls():
@@ -120,3 +133,61 @@ def test_media_download_rejects_redirects(monkeypatch):
     monkeypatch.setattr("httpx.Client", Client)
     with pytest.raises(MediaSecurityError, match="redirects are disabled"):
         download_media("https://example.com/image.png")
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "10.0.0.1",
+        "127.0.0.1",
+        "169.254.1.1",
+        "240.0.0.1",
+        "fc00::1",
+        "::1",
+        "fe80::1",
+        "2001:db8::1",
+    ],
+)
+def test_media_policy_rejects_non_public_dns_results(monkeypatch, address):
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda host, port, type: [
+            (
+                socket.AF_INET6 if ":" in address else socket.AF_INET,
+                socket.SOCK_STREAM,
+                6,
+                "",
+                (address, port),
+            )
+        ],
+    )
+
+    with pytest.raises(MediaSecurityError, match="non-public IP"):
+        MediaPolicy().validate_url("https://media.example/resource")
+
+
+def test_media_policy_allows_private_dns_results_when_explicitly_enabled(monkeypatch):
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda host, port, type: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", port))
+        ],
+    )
+
+    MediaPolicy(allow_private=True).validate_url("https://localhost/resource")
+
+
+def test_media_policy_rejects_host_with_any_non_public_dns_answer(monkeypatch):
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda host, port, type: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.1", port)),
+        ],
+    )
+
+    with pytest.raises(MediaSecurityError, match="non-public IP"):
+        MediaPolicy().validate_url("https://mixed.example/resource")

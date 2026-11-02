@@ -1,3 +1,5 @@
+import ipaddress
+import socket
 from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import urlparse
@@ -12,6 +14,7 @@ class MediaPolicy:
     allowed_mime_types: Optional[set[str]] = None
     allowed_hosts: Optional[set[str]] = None
     timeout: float = 30.0
+    allow_private: bool = False
 
     def validate_url(self, url: str) -> None:
         parsed = urlparse(url)
@@ -19,6 +22,37 @@ class MediaPolicy:
             raise MediaSecurityError("Media URLs must use HTTPS and include a hostname.")
         if self.allowed_hosts is not None and parsed.hostname not in self.allowed_hosts:
             raise MediaSecurityError(f"Media host is not allowlisted: {parsed.hostname}")
+        try:
+            addresses = [ipaddress.ip_address(parsed.hostname)]
+        except ValueError:
+            try:
+                address_info = socket.getaddrinfo(
+                    parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM
+                )
+            except OSError as error:
+                raise MediaSecurityError(
+                    f"Unable to resolve media host: {parsed.hostname}"
+                ) from error
+            addresses = [
+                ipaddress.ip_address(result[4][0].split("%", 1)[0])
+                for result in address_info
+            ]
+        if not addresses:
+            raise MediaSecurityError(f"Media host resolved to no addresses: {parsed.hostname}")
+        if not self.allow_private:
+            for address in addresses:
+                if (
+                    address.is_private
+                    or address.is_loopback
+                    or address.is_link_local
+                    or address.is_reserved
+                    or address.is_multicast
+                    or address.is_unspecified
+                    or not address.is_global
+                ):
+                    raise MediaSecurityError(
+                        f"Media host resolves to a non-public IP address: {address}"
+                    )
 
     def validate_mime(self, mime_type: str) -> None:
         if self.allowed_mime_types and mime_type not in self.allowed_mime_types:
