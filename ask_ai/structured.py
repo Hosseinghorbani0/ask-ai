@@ -75,8 +75,14 @@ def parse_structured(text: str, model_class: Any) -> Any:
         return data
 
     if hasattr(model_class, "model_validate"):
-        return model_class.model_validate(data)
+        try:
+            return model_class.model_validate(data)
+        except Exception as error:
+            raise StructuredValidationError(f"Structured response validation failed: {error}") from error
     if hasattr(model_class, "parse_obj"):
-        return model_class.parse_obj(data)
+        try:
+            return model_class.parse_obj(data)
+        except Exception as error:
+            raise StructuredValidationError(f"Structured response validation failed: {error}") from error
 
     raise StructuredValidationError(f"Unsupported response model: {model_class!r}")

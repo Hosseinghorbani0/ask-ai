@@ -29,7 +29,10 @@ types and are not emitted by the current adapters.
 
 Use `provider.use(Observability(...))` to attach optional metadata and event
 callbacks. Existing responses remain compatible; metadata is available through
-`response.metadata`.
+`response.metadata`. Provider token-usage extraction and `failure_reason`
+reporting are not supported yet. Estimated cost is only calculated when a
+response already contains usage data; bundled provider adapters do not
+currently provide it.
 
 ## Capability registry
 
@@ -47,9 +50,14 @@ latency, cost, or reliability values for meaningful ordering.
 
 Use `MediaPolicy` and `download_media` for constrained downloads. Existing
 provider-generated media continues to work, but now uses HTTPS, size, and
-content-based MIME validation. Redirects are rejected rather than followed.
+content-based MIME validation. DNS answers for private, loopback, link-local,
+and reserved addresses are rejected by default. `allowed_hosts` is optional;
+set it when downloads must be limited to known hostnames. `allow_private=True`
+opts out of the IP-range restriction and should only be used with trusted
+private-network URLs. Redirects are rejected rather than followed.
 
 ## Conversation sessions
 
 Use `provider.session()` for optional in-memory history. Normal `ask()` calls
-remain stateless and unchanged.
+remain stateless and unchanged. Session calls do not support `response_model`
+validation yet.

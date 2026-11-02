@@ -1,7 +1,7 @@
 ﻿import asyncio
 
 from ask_ai.base import BaseProvider
-from ask_ai.events import Completed, Error, TextDelta
+from ask_ai.events import Completed, Error, TextDelta, ToolCall, UsageUpdate
 
 
 class EventProvider(BaseProvider):
@@ -23,6 +23,18 @@ class EventProvider(BaseProvider):
         yield from self.chunks
         if self.failure:
             raise self.failure
+
+
+class TypedEventProvider(EventProvider):
+    def _send_request_stream_events(self, messages, config):
+        yield ToolCall(name="lookup", arguments={"id": 1}, call_id="call-1")
+        yield TextDelta(text="result", index=0)
+        yield UsageUpdate(input_tokens=2, output_tokens=1, total_tokens=3)
+
+    async def _send_request_stream_events_async(self, messages, config):
+        yield ToolCall(name="lookup", arguments={"id": 1}, call_id="call-1")
+        yield TextDelta(text="result", index=0)
+        yield UsageUpdate(input_tokens=2, output_tokens=1, total_tokens=3)
 
 
 def test_sync_stream_events_complete_and_preserve_legacy_stream():
@@ -50,3 +62,18 @@ def test_async_stream_events_complete():
     assert isinstance(events[0], TextDelta)
     assert isinstance(events[-1], Completed)
 
+
+def test_provider_typed_events_are_forwarded_in_sync_and_async():
+    provider = TypedEventProvider([])
+    sync_events = list(provider.ask_stream_events("hello"))
+    assert any(isinstance(event, ToolCall) for event in sync_events)
+    assert any(isinstance(event, UsageUpdate) for event in sync_events)
+    assert sync_events[-1].usage == UsageUpdate(input_tokens=2, output_tokens=1, total_tokens=3)
+
+    async def collect():
+        return [event async for event in provider.ask_stream_events_async("hello")]
+
+    async_events = asyncio.run(collect())
+    assert any(isinstance(event, ToolCall) for event in async_events)
+    assert any(isinstance(event, UsageUpdate) for event in async_events)
+    assert async_events[-1].usage == UsageUpdate(input_tokens=2, output_tokens=1, total_tokens=3)

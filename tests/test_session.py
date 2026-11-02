@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 from ask_ai import Observability
 from ask_ai.base import BaseProvider, Response
 
@@ -47,6 +49,26 @@ def test_session_uses_provider_observability():
 
     assert response.metadata.provider == "SessionProvider"
     assert events[0]["type"] == "completed"
+
+
+def test_session_rejects_response_model_on_all_request_apis():
+    session = SessionProvider(api_key="test").session()
+    options = {"response_model": dict}
+
+    with pytest.raises(NotImplementedError, match="does not support response_model"):
+        session.ask("hello", **options)
+
+    async def verify_async_apis():
+        with pytest.raises(NotImplementedError, match="does not support response_model"):
+            await session.ask_async("hello", **options)
+
+        with pytest.raises(NotImplementedError, match="does not support response_model"):
+            [chunk for chunk in session.ask_stream("hello", **options)]
+
+        with pytest.raises(NotImplementedError, match="does not support response_model"):
+            [chunk async for chunk in session.ask_stream_async("hello", **options)]
+
+    asyncio.run(verify_async_apis())
 
 
 def test_session_async_and_streaming():
