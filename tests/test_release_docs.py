@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -18,3 +19,18 @@ def test_pypi_readme_matches_google_media_and_session_support():
     assert "Images, Video, Audio" not in pypi_readme
     assert "## Conversation Sessions" in pypi_readme
     assert "Memory buffer / session-based conversation management" not in pypi_readme
+
+
+def test_publish_workflow_is_gated_on_published_releases_and_tests():
+    workflow = Path(".github/workflows/publish.yml").read_text(encoding="utf-8")
+
+    assert "release:" in workflow
+    assert "types: [published]" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "allow_prerelease:" in workflow
+    assert "needs: [release_info, test]" in workflow
+    assert "github.event_name == 'workflow_dispatch'" in workflow
+    assert "inputs.allow_prerelease" in workflow
+    assert "PYPI_API_TOKEN" in workflow
+    action_shas = re.findall(r"^\s+- uses: [^@\s]+@([0-9a-f]+)$", workflow, re.MULTILINE)
+    assert action_shas and all(len(sha) == 40 for sha in action_shas)
