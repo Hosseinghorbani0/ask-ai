@@ -12,6 +12,11 @@ from ..config import AdvancedConfig
 from ..events import TextDelta, UsageUpdate
 from ..exceptions import APIKeyError, MediaTypeNotSupportedError, ProviderError, map_provider_exception
 from ..observability import usage_from_fields
+from ..structured import (
+    call_with_schema_fallback,
+    call_with_schema_fallback_async,
+    strict_json_schema,
+)
 
 logger = logging.getLogger("ask_ai")
 
@@ -89,6 +94,16 @@ class AnthropicProvider(BaseProvider):
         if system_instruction:
             kwargs["system"] = system_instruction
 
+        response_model = config.extra.get("response_model")
+        schema = strict_json_schema(response_model) if response_model is not None else None
+        if schema is not None:
+            kwargs["output_config"] = {
+                "format": {
+                    "type": "json_schema",
+                    "schema": schema,
+                }
+            }
+
         return {k: v for k, v in kwargs.items() if v is not None}
 
     # ─── Sync ──────────────────────────────────────────────
@@ -99,7 +114,16 @@ class AnthropicProvider(BaseProvider):
 
         try:
             kwargs = self._build_kwargs(messages, config)
-            response = self.client.messages.create(**kwargs)
+            fallback_kwargs = dict(kwargs)
+            if "output_config" in kwargs:
+                fallback_kwargs.pop("output_config")
+                response = call_with_schema_fallback(
+                    self.client.messages.create,
+                    kwargs,
+                    fallback_kwargs,
+                )
+            else:
+                response = self.client.messages.create(**kwargs)
 
             text_content = ""
             if response.content:
@@ -147,7 +171,16 @@ class AnthropicProvider(BaseProvider):
 
         try:
             kwargs = self._build_kwargs(messages, config)
-            response = await self.async_client.messages.create(**kwargs)
+            fallback_kwargs = dict(kwargs)
+            if "output_config" in kwargs:
+                fallback_kwargs.pop("output_config")
+                response = await call_with_schema_fallback_async(
+                    self.async_client.messages.create,
+                    kwargs,
+                    fallback_kwargs,
+                )
+            else:
+                response = await self.async_client.messages.create(**kwargs)
 
             text_content = ""
             if response.content:

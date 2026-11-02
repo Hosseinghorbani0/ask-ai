@@ -248,6 +248,24 @@ print(response.raw)
 print(response.parsed.name)
 ```
 
+For supported schemas, `response_model` also requests native JSON Schema output
+from OpenAI/Azure, Anthropic, Groq, Google, and OpenRouter. When an adapter
+receives a clear unsupported-schema response (HTTP 400/422), it retries once
+without the native schema and keeps local validation enabled. Authentication,
+rate-limit, and server errors are propagated, not retried as prompt-only
+fallbacks. Schemas that cannot be represented in the provider's strict schema
+format use prompt instructions and local validation directly. Provider/model
+support varies; these request parameters have mock-based tests but have not
+been verified against live APIs.
+
+Provider parameters follow their documented APIs:
+[OpenAI Chat Completions](https://developers.openai.com/api/docs/guides/structured-outputs),
+[Azure OpenAI](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/structured-outputs),
+[Anthropic](https://platform.claude.com/docs/en/build-with-claude/structured-outputs),
+[Groq](https://console.groq.com/docs/structured-outputs),
+[Google GenAI](https://ai.google.dev/gemini-api/docs/structured-output), and
+[OpenRouter Chat Completions](https://openrouter.ai/docs/guides/features/structured-outputs).
+
 ### Streaming Events
 
 Use typed events for text, completion, and errors while keeping the legacy

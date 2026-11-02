@@ -537,14 +537,10 @@ class BaseProvider:
 
         # Smart capability: if json=True or response_model is specified
         response_model = config.extra.get('response_model')
-        if response_model:
-            if hasattr(response_model, "model_json_schema"):
-                schema = response_model.model_json_schema()
-            elif hasattr(response_model, "schema"):
-                schema = response_model.schema()
-            else:
-                schema = None
+        if response_model is not None:
+            from .structured import json_schema_for_model
 
+            schema = json_schema_for_model(response_model)
             if schema:
                 import json
                 schema_str = json.dumps(schema)

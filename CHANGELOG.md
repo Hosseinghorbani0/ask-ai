@@ -6,10 +6,15 @@
 
 - The minimum supported Python version is now 3.10.
 
+### Changed
+
+- Provider SDK automatic retries are disabled to avoid retry stacking. The default `retry=0` therefore makes one request; set `retry` explicitly to enable ask-ai retries for retryable failures.
+
 ### Added
 
 - Normalize provider-reported token usage on responses and streaming `UsageUpdate` events; estimated cost remains unavailable when usage is missing.
 - Migrate the Google provider to the `google-genai` SDK with native async requests and incremental async streaming.
+- Native JSON Schema requests for structured responses across supported providers, with narrowly scoped prompt-only fallback and continued local validation.
 
 ## 0.5.0 - 2026-10-30
 

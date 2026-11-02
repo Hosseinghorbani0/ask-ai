@@ -13,6 +13,12 @@ from ..config import AdvancedConfig
 from ..events import TextDelta, UsageUpdate
 from ..exceptions import APIKeyError, MediaTypeNotSupportedError, ProviderError, map_provider_exception
 from ..observability import usage_from_fields
+from ..structured import (
+    call_with_schema_fallback,
+    call_with_schema_fallback_async,
+    strict_json_schema,
+    structured_output_name,
+)
 
 logger = logging.getLogger("ask_ai")
 
@@ -74,6 +80,18 @@ class GroqProvider(BaseProvider):
         if config.stop:
             kwargs["stop"] = config.stop
 
+        response_model = config.extra.get("response_model")
+        schema = strict_json_schema(response_model) if response_model is not None else None
+        if schema is not None:
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": structured_output_name(response_model),
+                    "strict": True,
+                    "schema": schema,
+                },
+            }
+
         return {k: v for k, v in kwargs.items() if v is not None}
 
     # ─── Sync ──────────────────────────────────────────────
@@ -84,7 +102,16 @@ class GroqProvider(BaseProvider):
 
         try:
             kwargs = self._build_chat_kwargs(messages, config)
-            response = self.client.chat.completions.create(**kwargs)
+            fallback_kwargs = dict(kwargs)
+            if "response_format" in kwargs:
+                fallback_kwargs.pop("response_format")
+                response = call_with_schema_fallback(
+                    self.client.chat.completions.create,
+                    kwargs,
+                    fallback_kwargs,
+                )
+            else:
+                response = self.client.chat.completions.create(**kwargs)
             return Response(
                 text=response.choices[0].message.content or "",
                 usage=usage_from_fields(
@@ -140,7 +167,16 @@ class GroqProvider(BaseProvider):
 
         try:
             kwargs = self._build_chat_kwargs(messages, config)
-            response = await self.async_client.chat.completions.create(**kwargs)
+            fallback_kwargs = dict(kwargs)
+            if "response_format" in kwargs:
+                fallback_kwargs.pop("response_format")
+                response = await call_with_schema_fallback_async(
+                    self.async_client.chat.completions.create,
+                    kwargs,
+                    fallback_kwargs,
+                )
+            else:
+                response = await self.async_client.chat.completions.create(**kwargs)
             return Response(
                 text=response.choices[0].message.content or "",
                 usage=usage_from_fields(

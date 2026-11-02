@@ -12,6 +12,11 @@ from ..config import AdvancedConfig
 from ..events import TextDelta, UsageUpdate
 from ..exceptions import APIKeyError, MediaTypeNotSupportedError, ProviderError, map_provider_exception
 from ..observability import usage_from_fields
+from ..structured import (
+    call_with_schema_fallback,
+    call_with_schema_fallback_async,
+    strict_json_schema,
+)
 
 logger = logging.getLogger("ask_ai")
 
@@ -94,6 +99,11 @@ class GoogleProvider(BaseProvider):
                 "retry_options": {"attempts": 1},
             },
         }
+        response_model = config.extra.get("response_model")
+        schema = strict_json_schema(response_model) if response_model is not None else None
+        if schema is not None:
+            values["response_mime_type"] = "application/json"
+            values["response_schema"] = schema
         return {
             key: value
             for key, value in values.items()
@@ -128,7 +138,21 @@ class GoogleProvider(BaseProvider):
             if not contents:
                 return Response(text="")
 
-            response = self.client.models.generate_content(**request)
+            response_model = config.extra.get("response_model")
+            schema = strict_json_schema(response_model) if response_model is not None else None
+            if schema is not None:
+                fallback_request = dict(request)
+                fallback_config = dict(request["config"])
+                fallback_config.pop("response_mime_type", None)
+                fallback_config.pop("response_schema", None)
+                fallback_request["config"] = fallback_config
+                response = call_with_schema_fallback(
+                    self.client.models.generate_content,
+                    request,
+                    fallback_request,
+                )
+            else:
+                response = self.client.models.generate_content(**request)
             return Response(text=response.text or "", usage=self._usage(response))
         except Exception as e:
             raise map_provider_exception(e, "Google", "API") from e
@@ -180,7 +204,21 @@ class GoogleProvider(BaseProvider):
             if not contents:
                 return Response(text="")
 
-            response = await self.client.aio.models.generate_content(**request)
+            response_model = config.extra.get("response_model")
+            schema = strict_json_schema(response_model) if response_model is not None else None
+            if schema is not None:
+                fallback_request = dict(request)
+                fallback_config = dict(request["config"])
+                fallback_config.pop("response_mime_type", None)
+                fallback_config.pop("response_schema", None)
+                fallback_request["config"] = fallback_config
+                response = await call_with_schema_fallback_async(
+                    self.client.aio.models.generate_content,
+                    request,
+                    fallback_request,
+                )
+            else:
+                response = await self.client.aio.models.generate_content(**request)
             return Response(text=response.text or "", usage=self._usage(response))
         except Exception as e:
             raise map_provider_exception(e, "Google", "API") from e

@@ -14,6 +14,12 @@ from ..events import TextDelta, UsageUpdate
 from ..exceptions import APIKeyError, ProviderError, map_provider_exception
 from ..media import AudioObject, ImageObject
 from ..observability import usage_from_fields
+from ..structured import (
+    call_with_schema_fallback,
+    call_with_schema_fallback_async,
+    strict_json_schema,
+    structured_output_name,
+)
 
 logger = logging.getLogger("ask_ai")
 
@@ -76,8 +82,20 @@ class OpenAIProvider(BaseProvider):
 
     def _generate_text_or_smart(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Response:
         try:
-            kwargs = self._build_chat_kwargs(messages, config, include_tools=True)
-            response = self.client.chat.completions.create(**kwargs)
+            response_model = config.extra.get("response_model")
+            native_kwargs = self._build_chat_kwargs(
+                messages, config, include_tools=response_model is None
+            )
+            fallback_kwargs = dict(native_kwargs)
+            if "response_format" in native_kwargs:
+                fallback_kwargs.pop("response_format")
+                response = call_with_schema_fallback(
+                    self.client.chat.completions.create,
+                    native_kwargs,
+                    fallback_kwargs,
+                )
+            else:
+                response = self.client.chat.completions.create(**native_kwargs)
             result = self._process_chat_response(response, messages, config)
             result.usage = usage_from_fields(
                 getattr(response, "usage", None), "prompt_tokens", "completion_tokens", "total_tokens"
@@ -131,8 +149,20 @@ class OpenAIProvider(BaseProvider):
             return await self._generate_audio_async(messages, config)
 
         try:
-            kwargs = self._build_chat_kwargs(messages, config, include_tools=True)
-            response = await self.async_client.chat.completions.create(**kwargs)
+            response_model = config.extra.get("response_model")
+            native_kwargs = self._build_chat_kwargs(
+                messages, config, include_tools=response_model is None
+            )
+            fallback_kwargs = dict(native_kwargs)
+            if "response_format" in native_kwargs:
+                fallback_kwargs.pop("response_format")
+                response = await call_with_schema_fallback_async(
+                    self.async_client.chat.completions.create,
+                    native_kwargs,
+                    fallback_kwargs,
+                )
+            else:
+                response = await self.async_client.chat.completions.create(**native_kwargs)
             result = await self._process_chat_response_async(response, messages, config)
             result.usage = usage_from_fields(
                 getattr(response, "usage", None), "prompt_tokens", "completion_tokens", "total_tokens"
@@ -199,6 +229,18 @@ class OpenAIProvider(BaseProvider):
             if tools:
                 kwargs["tools"] = tools
                 kwargs["tool_choice"] = "auto"
+
+        response_model = config.extra.get("response_model")
+        schema = strict_json_schema(response_model) if response_model is not None else None
+        if schema is not None:
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": structured_output_name(response_model),
+                    "strict": True,
+                    "schema": schema,
+                },
+            }
 
         # Filter None values
         return {k: v for k, v in kwargs.items() if v is not None}

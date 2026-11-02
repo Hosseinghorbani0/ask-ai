@@ -71,7 +71,7 @@ def test_all_package_modules_and_providers_import():
 def test_release_version_and_requirements_are_aligned():
     assert ask_ai.__version__ == "0.5.0"
     requirements = open("ask_ai/requirements.txt", encoding="utf-8").read()
-    for package in ("openai", "anthropic", "google-genai", "groq", "Pillow", "httpx"):
+    for package in ("openai", "anthropic>=1.0.0", "google-genai", "groq", "Pillow", "httpx"):
         assert package in requirements
 
 
@@ -97,6 +97,29 @@ def test_provider_exception_mapper_and_retry_policy():
     provider = object.__new__(BaseProvider)
     assert provider._is_retryable_error(ProviderRateLimitError("rate limited")) is True
     assert provider._is_retryable_error(ProviderInvalidRequestError("bad request")) is False
+
+
+def test_default_retry_makes_one_attempt():
+    class TimeoutProvider(BaseProvider):
+        def __init__(self):
+            super().__init__(api_key="test")
+            self.calls = 0
+
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            self.calls += 1
+            raise ProviderTimeoutError("timeout")
+
+    provider = TimeoutProvider()
+    with pytest.raises(ProviderTimeoutError):
+        provider.ask("hello")
+
+    assert provider.calls == 1
 
 
 def test_provider_request_timeout_is_forwarded():
