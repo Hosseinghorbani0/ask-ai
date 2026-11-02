@@ -8,7 +8,8 @@ from typing import Any, Optional, Union
 
 from .capabilities import Capabilities
 from .config import AdvancedConfig
-from .events import Completed, Error, TextDelta
+from .events import Completed, Error, TextDelta, ToolCall, UsageUpdate
+from .exceptions import StructuredValidationError
 from .media import AudioObject, ImageObject
 from .observability import Observability, ResponseMetadata, Usage
 
@@ -151,6 +152,106 @@ class BaseProvider:
             middleware.emit({"type": "completed", "metadata": metadata, "response": response})
         return response
 
+    def _attach_failure_metadata(self, error: Exception, started_at: float) -> None:
+        metadata = ResponseMetadata(
+            provider=self.__class__.__name__,
+            model=self.model,
+            latency_ms=(time.perf_counter() - started_at) * 1000,
+            retry_count=getattr(self, "_retry_count", 0),
+            failure_reason=str(error),
+        )
+        for middleware in getattr(self, "_middleware", []):
+            middleware.emit({"type": "failed", "metadata": metadata, "error": error})
+
+    def _validation_retry_messages(
+        self, messages: list[dict[str, str]], response: Response, error: StructuredValidationError
+    ) -> list[dict[str, str]]:
+        return [
+            *messages,
+            {"role": "assistant", "content": response.raw},
+            {
+                "role": "user",
+                "content": (
+                    "Your previous response failed schema validation: "
+                    f"{error}. Return a corrected JSON response only."
+                ),
+            },
+        ]
+
+    def _execute_response(
+        self,
+        messages: list[dict[str, str]],
+        config: AdvancedConfig,
+        output_type: Optional[str],
+        retry: int,
+        response_model: Any,
+        validation_retries: int,
+        started_at: float,
+    ) -> Response:
+        if validation_retries < 0:
+            raise ValueError("validation_retries must be non-negative.")
+        request_messages = messages
+        retry_count = 0
+        try:
+            for attempt in range(validation_retries + 1):
+                response = self._execute_with_retry(
+                    self._send_request, request_messages, config, output_type, retry
+                )
+                retry_count += getattr(self, "_retry_count", 0)
+                if response_model is None:
+                    return self._attach_metadata(response, started_at, retry_count)
+                response.response_model = response_model
+                try:
+                    response.parsed
+                except StructuredValidationError as error:
+                    if attempt == validation_retries:
+                        raise
+                    request_messages = self._validation_retry_messages(messages, response, error)
+                else:
+                    return self._attach_metadata(response, started_at, retry_count)
+            raise RuntimeError("Structured validation retry loop exited unexpectedly.")
+        except Exception as error:
+            self._retry_count = retry_count + getattr(self, "_retry_count", 0)
+            self._attach_failure_metadata(error, started_at)
+            raise
+
+    async def _execute_response_async(
+        self,
+        messages: list[dict[str, str]],
+        config: AdvancedConfig,
+        output_type: Optional[str],
+        retry: int,
+        response_model: Any,
+        validation_retries: int,
+        started_at: float,
+    ) -> Response:
+        if validation_retries < 0:
+            raise ValueError("validation_retries must be non-negative.")
+        request_messages = messages
+        retry_count = 0
+        try:
+            for attempt in range(validation_retries + 1):
+                response = await self._execute_with_retry_async(
+                    self._send_request_async, request_messages, config, output_type, retry
+                )
+                retry_count += getattr(self, "_retry_count", 0)
+                if response_model is None:
+                    return self._attach_metadata(response, started_at, retry_count)
+                response.response_model = response_model
+                try:
+                    response.parsed
+                except StructuredValidationError as error:
+                    if attempt == validation_retries:
+                        raise
+                    request_messages = self._validation_retry_messages(messages, response, error)
+                else:
+                    return self._attach_metadata(response, started_at, retry_count)
+            raise RuntimeError("Structured validation retry loop exited unexpectedly.")
+        except Exception as error:
+            self._retry_count = retry_count + getattr(self, "_retry_count", 0)
+            self._attach_failure_metadata(error, started_at)
+            raise
+
     def _get_api_key_env_var(self) -> str:
         """Subclasses should return the env var name, e.g. 'OPENAI_API_KEY'"""
         raise NotImplementedError
@@ -212,23 +313,10 @@ class BaseProvider:
         validation_retries = int(kwargs.get("validation_retries", 0) or 0)
 
         started_at = time.perf_counter()
-        response = None
-        for validation_attempt in range(validation_retries + 1):
-            response = self._execute_with_retry(
-                self._send_request, messages, final_config, output_type, retry
-            )
-            if not response_model:
-                break
-            response.response_model = response_model
-            try:
-                response.parsed
-                break
-            except Exception:
-                if validation_attempt == validation_retries:
-                    raise
-        if response_model:
-            response.response_model = response_model
-        return self._attach_metadata(response, started_at, getattr(self, "_retry_count", 0))
+        return self._execute_response(
+            messages, final_config, output_type, retry,
+            response_model, validation_retries, started_at,
+        )
 
     def ask_stream(self, query: str, **kwargs) -> Iterator[str]:
         """
@@ -268,14 +356,34 @@ class BaseProvider:
 
     def ask_stream_events(self, query: str, **kwargs) -> Iterator[Any]:
         """Yield typed events while preserving the legacy text stream API."""
+        fallback_providers = kwargs.pop("providers", None) or kwargs.pop("fallback", None)
+        if fallback_providers:
+            if not isinstance(fallback_providers, (list, tuple)):
+                fallback_providers = [fallback_providers]
+            for provider in fallback_providers:
+                provider_instance = provider() if isinstance(provider, type) else provider
+                yield from provider_instance.ask_stream_events(query, **kwargs)
+                return
+
         emitted_chunks = 0
         text_parts = []
+        usage = None
+        final_config = self._build_final_config(kwargs)
+        messages = self._prepare_messages(query, final_config)
         try:
-            for chunk in self.ask_stream(query, **kwargs):
-                emitted_chunks += 1
-                text_parts.append(chunk)
-                yield TextDelta(text=chunk, index=emitted_chunks - 1)
-            yield Completed(response=Response(text="".join(text_parts)))
+            for event in self._send_request_stream_events(messages, final_config):
+                if isinstance(event, TextDelta):
+                    emitted_chunks += 1
+                    text_parts.append(event.text)
+                    yield event
+                elif isinstance(event, UsageUpdate):
+                    usage = event
+                    yield event
+                elif isinstance(event, ToolCall):
+                    yield event
+                else:
+                    yield event
+            yield Completed(response=Response(text="".join(text_parts)), usage=usage)
         except Exception as error:
             yield Error(error=error, emitted_chunks=emitted_chunks)
 
@@ -316,23 +424,10 @@ class BaseProvider:
         validation_retries = int(kwargs.get("validation_retries", 0) or 0)
 
         started_at = time.perf_counter()
-        response = None
-        for validation_attempt in range(validation_retries + 1):
-            response = await self._execute_with_retry_async(
-                self._send_request_async, messages, final_config, output_type, retry
-            )
-            if not response_model:
-                break
-            response.response_model = response_model
-            try:
-                response.parsed
-                break
-            except Exception:
-                if validation_attempt == validation_retries:
-                    raise
-        if response_model:
-            response.response_model = response_model
-        return self._attach_metadata(response, started_at, getattr(self, "_retry_count", 0))
+        return await self._execute_response_async(
+            messages, final_config, output_type, retry,
+            response_model, validation_retries, started_at,
+        )
 
     async def ask_stream_async(self, query: str, **kwargs) -> AsyncIterator[str]:
         """
@@ -373,14 +468,35 @@ class BaseProvider:
 
     async def ask_stream_events_async(self, query: str, **kwargs) -> AsyncIterator[Any]:
         """Yield typed events while preserving the legacy async text stream API."""
+        fallback_providers = kwargs.pop("providers", None) or kwargs.pop("fallback", None)
+        if fallback_providers:
+            if not isinstance(fallback_providers, (list, tuple)):
+                fallback_providers = [fallback_providers]
+            for provider in fallback_providers:
+                provider_instance = provider() if isinstance(provider, type) else provider
+                async for event in provider_instance.ask_stream_events_async(query, **kwargs):
+                    yield event
+                return
+
         emitted_chunks = 0
         text_parts = []
+        usage = None
+        final_config = self._build_final_config(kwargs)
+        messages = self._prepare_messages(query, final_config)
         try:
-            async for chunk in self.ask_stream_async(query, **kwargs):
-                emitted_chunks += 1
-                text_parts.append(chunk)
-                yield TextDelta(text=chunk, index=emitted_chunks - 1)
-            yield Completed(response=Response(text="".join(text_parts)))
+            async for event in self._send_request_stream_events_async(messages, final_config):
+                if isinstance(event, TextDelta):
+                    emitted_chunks += 1
+                    text_parts.append(event.text)
+                    yield event
+                elif isinstance(event, UsageUpdate):
+                    usage = event
+                    yield event
+                elif isinstance(event, ToolCall):
+                    yield event
+                else:
+                    yield event
+            yield Completed(response=Response(text="".join(text_parts)), usage=usage)
         except Exception as error:
             yield Error(error=error, emitted_chunks=emitted_chunks)
 
@@ -526,12 +642,24 @@ class BaseProvider:
         from .exceptions import StreamNotSupportedError
         raise StreamNotSupportedError(f"{self.__class__.__name__} does not support streaming.")
 
+    def _send_request_stream_events(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Iterator[Any]:
+        for index, chunk in enumerate(self._send_request_stream(messages, config)):
+            yield TextDelta(text=chunk, index=index)
+
     async def _send_request_stream_async(self, messages: list[dict[str, str]], config: AdvancedConfig) -> AsyncIterator[str]:
         """Async streaming — subclasses should override for native async."""
         # Default fallback: wrap sync stream
         loop = asyncio.get_running_loop()
         for chunk in await loop.run_in_executor(None, lambda: list(self._send_request_stream(messages, config))):
             yield chunk
+
+    async def _send_request_stream_events_async(
+        self, messages: list[dict[str, str]], config: AdvancedConfig
+    ) -> AsyncIterator[Any]:
+        index = 0
+        async for chunk in self._send_request_stream_async(messages, config):
+            yield TextDelta(text=chunk, index=index)
+            index += 1
 
     # ─── Tool Definitions for Smart Intent ─────────────────
 

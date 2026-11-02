@@ -1,5 +1,6 @@
 from ask_ai import Observability
 from ask_ai.base import BaseProvider, Response
+from ask_ai.exceptions import ProviderInvalidRequestError
 
 
 class ObservableProvider(BaseProvider):
@@ -51,3 +52,23 @@ def test_observability_assigns_estimated_cost_to_response_metadata():
     response = provider.ask("hello")
 
     assert response.metadata.estimated_cost == 0.002
+
+
+def test_observability_emits_failure_reason():
+    events = []
+
+    class FailingProvider(ObservableProvider):
+        def _send_request(self, messages, config, output_type=None):
+            raise ProviderInvalidRequestError("invalid input")
+
+    provider = FailingProvider(api_key="test").use(Observability(on_event=events.append))
+
+    try:
+        provider.ask("bad")
+    except ProviderInvalidRequestError:
+        pass
+    else:
+        raise AssertionError("Expected provider error")
+
+    assert events[0]["type"] == "failed"
+    assert events[0]["metadata"].failure_reason == "invalid input"
