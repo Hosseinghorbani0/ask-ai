@@ -34,6 +34,7 @@ class AnthropicProvider(BaseProvider):
         self.client = anthropic.Anthropic(
             api_key=self.api_key,
             timeout=self.config.extra.get("timeout", 30.0),
+            max_retries=0,
         )
         self._async_client = None
 
@@ -44,6 +45,7 @@ class AnthropicProvider(BaseProvider):
             self._async_client = anthropic.AsyncAnthropic(
                 api_key=self.api_key,
                 timeout=self.config.extra.get("timeout", 30.0),
+                max_retries=0,
             )
         return self._async_client
 

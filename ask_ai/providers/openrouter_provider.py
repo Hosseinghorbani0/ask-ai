@@ -35,6 +35,8 @@ class OpenRouterProvider(OpenAIProvider):
         self.client = openai.OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=self.api_key,
+            timeout=kwargs.get("timeout", 30.0),
+            max_retries=0,
         )
         self._async_client = None
 
@@ -49,6 +51,8 @@ class OpenRouterProvider(OpenAIProvider):
             self._async_client = openai.AsyncOpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=self.api_key,
+                timeout=self.config.extra.get("timeout", 30.0),
+                max_retries=0,
             )
         return self._async_client
 

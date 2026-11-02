@@ -36,7 +36,11 @@ class OpenAIProvider(BaseProvider):
         if openai is None:
             raise ProviderError("OpenAI client library not installed. Run: pip install openai")
 
-        self.client = openai.OpenAI(api_key=self.api_key, timeout=self.config.extra.get("timeout", 30.0))
+        self.client = openai.OpenAI(
+            api_key=self.api_key,
+            timeout=self.config.extra.get("timeout", 30.0),
+            max_retries=0,
+        )
         self._async_client = None  # Lazy-loaded
 
     @property
@@ -46,6 +50,7 @@ class OpenAIProvider(BaseProvider):
             self._async_client = openai.AsyncOpenAI(
                 api_key=self.api_key,
                 timeout=self.config.extra.get("timeout", 30.0),
+                max_retries=0,
             )
         return self._async_client
 

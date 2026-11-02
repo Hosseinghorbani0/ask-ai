@@ -197,6 +197,13 @@ class BaseProvider:
                 response = self._execute_with_retry(
                     self._send_request, request_messages, config, output_type, retry
                 )
+                response._kwargs.update(
+                    {
+                        option: config.extra[option]
+                        for option in ("clean", "strip", "code")
+                        if option in config.extra
+                    }
+                )
                 retry_count += getattr(self, "_retry_count", 0)
                 if response_model is None:
                     return self._attach_metadata(response, started_at, retry_count)
@@ -233,6 +240,13 @@ class BaseProvider:
             for attempt in range(validation_retries + 1):
                 response = await self._execute_with_retry_async(
                     self._send_request_async, request_messages, config, output_type, retry
+                )
+                response._kwargs.update(
+                    {
+                        option: config.extra[option]
+                        for option in ("clean", "strip", "code")
+                        if option in config.extra
+                    }
                 )
                 retry_count += getattr(self, "_retry_count", 0)
                 if response_model is None:

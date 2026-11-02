@@ -112,6 +112,135 @@ def test_provider_request_timeout_is_forwarded():
     assert kwargs["timeout"] == 7.0
 
 
+@pytest.mark.parametrize(
+    ("option", "source", "expected"),
+    [
+        ("clean", "```json\n{\"ok\": true}\n```", "{\"ok\": true}"),
+        ("strip", "<think>reasoning</think>answer", "answer"),
+        ("code", "Example:\n```python\nprint('ok')\n```", "print('ok')"),
+    ],
+)
+def test_text_formatting_options_work_through_public_ask(option, source, expected):
+    class FormattingProvider(BaseProvider):
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            from ask_ai import Response
+            return Response(text=source)
+
+    response = FormattingProvider(api_key="test").ask("format", **{option: True})
+
+    assert response.text == expected
+    assert response.raw == source
+
+
+@pytest.mark.parametrize(
+    ("option", "source", "expected"),
+    [
+        ("clean", "```json\n{\"ok\": true}\n```", "{\"ok\": true}"),
+        ("strip", "<think>reasoning</think>answer", "answer"),
+        ("code", "Example:\n```python\nprint('ok')\n```", "print('ok')"),
+    ],
+)
+def test_text_formatting_options_work_through_public_ask_async(option, source, expected):
+    class FormattingProvider(BaseProvider):
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            from ask_ai import Response
+            return Response(text=source)
+
+    response = asyncio.run(
+        FormattingProvider(api_key="test").ask_async("format", **{option: True})
+    )
+
+    assert response.text == expected
+    assert response.raw == source
+
+
+def test_provider_sdk_clients_disable_internal_retries(monkeypatch):
+    from types import SimpleNamespace
+
+    from ask_ai.providers import anthropic_provider, groq_provider, openai_provider
+
+    clients = []
+
+    def fake_client(*args, **kwargs):
+        clients.append(kwargs)
+        return object()
+
+    monkeypatch.setattr(openai_provider, "openai", SimpleNamespace(
+        OpenAI=fake_client,
+        AsyncOpenAI=fake_client,
+    ))
+    monkeypatch.setattr(anthropic_provider, "anthropic", SimpleNamespace(
+        Anthropic=fake_client,
+        AsyncAnthropic=fake_client,
+    ))
+    monkeypatch.setattr(groq_provider, "Groq", fake_client)
+    monkeypatch.setattr(groq_provider, "AsyncGroq", fake_client)
+
+    OpenAI(api_key="test")
+    openai_async = OpenAI(api_key="test")
+    _ = openai_async.async_client
+    anthropic = ask_ai.Anthropic(api_key="test")
+    _ = anthropic.async_client
+    groq = ask_ai.Groq(api_key="test")
+    _ = groq.async_client
+
+    assert len(clients) == 7
+    assert all(client["max_retries"] == 0 for client in clients)
+
+
+def test_azure_and_openrouter_sdk_clients_disable_internal_retries(monkeypatch):
+    from ask_ai.providers import openrouter_provider
+
+    clients = []
+
+    def fake_client(*args, **kwargs):
+        clients.append(kwargs)
+        return object()
+
+    monkeypatch.setattr(openrouter_provider.openai, "OpenAI", fake_client)
+    monkeypatch.setattr(openrouter_provider.openai, "AsyncOpenAI", fake_client)
+    monkeypatch.setattr(openrouter_provider.openai, "AzureOpenAI", fake_client)
+    monkeypatch.setattr(openrouter_provider.openai, "AsyncAzureOpenAI", fake_client)
+
+    azure = Azure(
+        api_key="test",
+        endpoint="https://example.test",
+        deployment_name="deployment",
+    )
+    _ = azure.async_client
+    router = ask_ai.OpenRouter(api_key="test")
+    _ = router.async_client
+
+    assert len(clients) == 4
+    assert all(client["max_retries"] == 0 for client in clients)
+
+
+def test_groq_uses_max_completion_tokens():
+    from ask_ai import Groq
+
+    provider = object.__new__(Groq)
+    provider.model = "test-model"
+    kwargs = provider._build_chat_kwargs(
+        [{"role": "user", "content": "hello"}],
+        AdvancedConfig(max_tokens=42),
+    )
+
+    assert kwargs["max_completion_tokens"] == 42
+    assert "max_tokens" not in kwargs
+
+
 def test_streaming_fallback_stops_after_first_provider_emits():
     class PartialProvider(BaseProvider):
         def _get_api_key_env_var(self):

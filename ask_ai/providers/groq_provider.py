@@ -27,7 +27,11 @@ class GroqProvider(BaseProvider):
         if Groq is None:
             raise ProviderError("Groq client library not installed. Run: pip install groq")
 
-        self.client = Groq(api_key=self.api_key, timeout=self.config.extra.get("timeout", 30.0))
+        self.client = Groq(
+            api_key=self.api_key,
+            timeout=self.config.extra.get("timeout", 30.0),
+            max_retries=0,
+        )
         self._async_client = None
 
     @property
@@ -37,6 +41,7 @@ class GroqProvider(BaseProvider):
             self._async_client = AsyncGroq(
                 api_key=self.api_key,
                 timeout=self.config.extra.get("timeout", 30.0),
+                max_retries=0,
             )
         return self._async_client
 
@@ -58,7 +63,7 @@ class GroqProvider(BaseProvider):
             "model": self.model,
             "messages": messages,
             "temperature": config.temperature,
-            "max_tokens": config.max_tokens,
+            "max_completion_tokens": config.max_tokens,
             "top_p": config.top_p,
             "frequency_penalty": config.frequency_penalty,
             "presence_penalty": config.presence_penalty,
