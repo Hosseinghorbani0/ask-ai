@@ -46,6 +46,13 @@ Provider SDK retries are disabled to avoid stacking them with ask-ai retries.
 As a result, the default `retry=0` makes one request and does not retry transient
 failures. Pass `retry=N` to enable ask-ai retries for retryable errors.
 
+## Option validation and `safe_mode`
+
+Unknown option names now produce a `UserWarning` with a spelling suggestion.
+Set `strict_options=True` on a provider, session, or request to raise a
+`ValueError` instead. `safe_mode` has no defined behavior and emits a
+`DeprecationWarning` when supplied; it should not be relied on.
+
 ## Usage metadata
 
 Provider-reported usage is normalized onto responses and streaming usage events

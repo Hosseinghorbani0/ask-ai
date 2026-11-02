@@ -8,9 +8,15 @@ from .base import Response
 class ConversationSession:
     """In-memory conversation state backed by an existing provider."""
 
-    def __init__(self, provider: Any, max_messages: Optional[int] = None):
+    def __init__(
+        self,
+        provider: Any,
+        max_messages: Optional[int] = None,
+        strict_options: bool = False,
+    ):
         self.provider = provider
         self.max_messages = max_messages
+        self.strict_options = strict_options
         self.messages: list[dict[str, str]] = []
 
     def _trim(self) -> None:
@@ -28,6 +34,8 @@ class ConversationSession:
             raise NotImplementedError(
                 "ConversationSession does not support response_model validation yet."
             )
+        if self.strict_options and "strict_options" not in kwargs:
+            kwargs["strict_options"] = True
 
     def ask(self, query: str, **kwargs: Any):
         self._validate_options(kwargs)

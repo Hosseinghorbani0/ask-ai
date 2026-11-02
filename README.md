@@ -127,6 +127,11 @@ ai.advanced(
 print(ai.ask("How do I optimize a Dockerfile?").text)
 ```
 
+Unknown option names produce a `UserWarning` with a spelling suggestion. Pass
+`strict_options=True` to a provider (or to an individual request) to raise a
+`ValueError` instead. `safe_mode` currently has no defined behavior and is
+deprecated; passing it emits a `DeprecationWarning`.
+
 ---
 
 ### 🚀 Async Support (FastAPI / Aiogram)

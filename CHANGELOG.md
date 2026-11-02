@@ -15,6 +15,7 @@
 - Normalize provider-reported token usage on responses and streaming `UsageUpdate` events; estimated cost remains unavailable when usage is missing.
 - Migrate the Google provider to the `google-genai` SDK with native async requests and incremental async streaming.
 - Native JSON Schema requests for structured responses across supported providers, with narrowly scoped prompt-only fallback and continued local validation.
+- Warn on unknown option names with spelling suggestions; opt-in `strict_options=True` raises an error. `safe_mode` emits a deprecation warning because it has no defined behavior.
 
 ## 0.5.0 - 2026-10-30
 

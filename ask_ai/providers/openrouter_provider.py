@@ -8,7 +8,7 @@ except ImportError:
 
 from ..base import Response
 from ..capabilities import Capabilities
-from ..config import AdvancedConfig
+from ..config import CONFIG_OPTION_NAMES, AdvancedConfig, validate_option_names
 from ..exceptions import APIKeyError, ProviderError, map_provider_exception
 from .openai_provider import OpenAIProvider
 
@@ -23,7 +23,9 @@ class OpenRouterProvider(OpenAIProvider):
         )
     """OpenRouter provider â€” routes to multiple models via OpenAI-compatible API."""
 
-    def __init__(self, api_key: str = None, model: str = None, **kwargs):
+    def __init__(self, api_key: str = None, model: str = None, strict_options: bool = False, **kwargs):
+        self.strict_options = strict_options
+        validate_option_names(kwargs, CONFIG_OPTION_NAMES | self.option_names, strict_options)
         if openai is None:
             raise ProviderError("OpenAI client library not installed. Run: pip install openai")
 

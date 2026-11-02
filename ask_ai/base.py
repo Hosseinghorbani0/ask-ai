@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator, Iterator
 from typing import Any, Optional, Union
 
 from .capabilities import Capabilities
-from .config import AdvancedConfig
+from .config import CONFIG_OPTION_NAMES, AdvancedConfig, validate_option_names
 from .events import Completed, Error, TextDelta, ToolCall, UsageUpdate
 from .exceptions import StructuredValidationError
 from .media import AudioObject, ImageObject
@@ -112,7 +112,18 @@ class BaseProvider:
     Abstract base class for all AI providers.
     Implements the core 'ask' logic and configuration management.
     """
-    def __init__(self, api_key: str = None, model: str = None, persona: str = None, **kwargs):
+    option_names = frozenset()
+
+    def __init__(
+        self,
+        api_key: str = None,
+        model: str = None,
+        persona: str = None,
+        strict_options: bool = False,
+        **kwargs,
+    ):
+        self.strict_options = strict_options
+        self._validate_option_names(kwargs, CONFIG_OPTION_NAMES | self.option_names, strict_options)
         # Zero-Config: Try env var if key not provided
         self.api_key = api_key or os.environ.get(self._get_api_key_env_var())
         self.model = model or self._get_default_model()
@@ -120,14 +131,33 @@ class BaseProvider:
         self.config = AdvancedConfig(**kwargs)
         self._middleware: list[Observability] = []
 
+    @staticmethod
+    def _validate_option_names(options, allowed, strict=False):
+        validate_option_names(options, allowed, strict)
+
     def use(self, middleware: Observability) -> "BaseProvider":
         """Attach optional observability middleware and return this provider."""
         self._middleware.append(middleware)
         return self
 
-    def session(self, max_messages: Optional[int] = None):
+    def session(
+        self,
+        max_messages: Optional[int] = None,
+        strict_options: Optional[bool] = None,
+        **kwargs,
+    ):
+        strict = (
+            getattr(self, "strict_options", False)
+            if strict_options is None
+            else strict_options
+        )
+        validate_option_names(kwargs, {"max_messages", "strict_options"}, strict)
         from .session import ConversationSession
-        return ConversationSession(self, max_messages=max_messages)
+        return ConversationSession(
+            self,
+            max_messages=max_messages,
+            strict_options=strict,
+        )
 
     def capabilities(self) -> Capabilities:
         """Return conservative capabilities for custom providers."""
@@ -281,6 +311,8 @@ class BaseProvider:
         Update global advanced settings for this instance.
         Merges new settings with existing ones.
         """
+        strict = kwargs.pop("strict_options", self.strict_options)
+        self._validate_option_names(kwargs, CONFIG_OPTION_NAMES | self.option_names, strict)
         new_conf = AdvancedConfig(**kwargs)
         for k, v in new_conf.__dict__.items():
             if k in ('extra', '_safe_mode_provided'):
@@ -520,11 +552,20 @@ class BaseProvider:
 
     def _build_final_config(self, kwargs: dict[str, Any]) -> AdvancedConfig:
         """Build final config by merging global config with per-request kwargs."""
-        request_config = AdvancedConfig(**kwargs)
+        options = dict(kwargs)
+        strict = options.pop("strict_options", getattr(self, "strict_options", False))
+        validate_option_names(
+            options,
+            CONFIG_OPTION_NAMES
+            | self.option_names
+            | {"strict_options", "providers", "fallback"},
+            strict,
+        )
+        request_config = AdvancedConfig(**options)
         final_config = self.config.merge(request_config)
 
         # Ensure timeout has a default
-        timeout = kwargs.get('timeout', final_config.extra.get('timeout', 30))
+        timeout = options.get('timeout', final_config.extra.get('timeout', 30))
         final_config.extra['timeout'] = float(timeout) if timeout is not None else 30.0
 
         return final_config
