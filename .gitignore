@@ -31,3 +31,4 @@ local_artifacts/test_*.py
 examples/output/*.png
 examples/output/*.mp3
 logs/*.log
+/h

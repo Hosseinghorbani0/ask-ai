@@ -1,5 +1,13 @@
 # Migrating to ask-ai v0.6.0
 
+## Breaking changes
+
+- Python 3.10 is now the minimum supported version.
+- The optional Anthropic SDK dependency requires `anthropic>=1.0.0`.
+- The Google provider dependency changed from `google-generativeai` to
+  `google-genai`.
+- Provider SDK-level retries are disabled; ask-ai applies its own retry policy.
+
 ## Python version
 
 Python 3.10 is now the minimum supported version.
@@ -21,6 +29,8 @@ incremental stream APIs. The provider owns its SDK client; call `close()` or
 ## Structured responses
 
 Existing `response_model` and `validation_retries` calls remain available.
+`ConversationSession` does not yet support `response_model` validation and raises
+`NotImplementedError` if it is passed.
 Supported Pydantic, dataclass, `TypedDict`, and JSON Schema models are normalized
 to strict JSON Schema and sent using each provider's native request format where
 available. OpenAI and Azure use Chat Completions `response_format`; Anthropic
@@ -61,4 +71,5 @@ Set `strict_options=True` on a provider, session, or request to raise a
 Provider-reported usage is normalized onto responses and streaming usage events
 when the provider returns it. Cost estimates remain absent when usage is
 unavailable. The extraction paths are mock-tested and have not been verified
-against live provider APIs.
+against live provider APIs. On request failures, observability middleware emits
+a `failed` event containing `failure_reason`; the exception still propagates.

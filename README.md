@@ -291,8 +291,10 @@ for event in OpenAI().ask_stream_events("Tell me a story"):
         print("\nDone")
 ```
 
-`UsageUpdate` events are emitted when the provider returns usage in its stream.
+`UsageUpdate` events are emitted when an adapter receives usage in its stream.
 `ToolCall` is a reserved event type and is not emitted by the current adapters.
+Streaming usage extraction is mock-tested and has not been verified against
+live provider APIs.
 
 ### 📊 Observability
 
@@ -300,7 +302,10 @@ Attach optional middleware to receive provider, model, latency, retry, and
 provider-reported token usage. Usage field names are normalized to
 `input_tokens`, `output_tokens`, and `total_tokens`. Estimated cost is only
 calculated when usage is available and pricing for the model is supplied;
-missing usage never produces a cost estimate:
+missing usage never produces a cost estimate. Mock tests cover usage extraction
+for supported adapters; live provider APIs have not been verified. On failures,
+middleware emits a `failed` event with `failure_reason`, then the exception is
+propagated:
 
 ```python
 from ask_ai import Observability, OpenAI
@@ -322,6 +327,9 @@ capabilities = OpenAI().capabilities()
 if capabilities.structured_output:
     print("Structured output is available")
 ```
+
+Capabilities are advisory provider-level metadata, not guarantees for every
+model.
 
 ### Smart Router
 
