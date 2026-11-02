@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0 - Unreleased
+
+### Added
+
+- Normalize provider-reported token usage on responses and streaming `UsageUpdate` events; estimated cost remains unavailable when usage is missing.
+
 ## 0.5.0 - 2026-10-30
 
 ### Added

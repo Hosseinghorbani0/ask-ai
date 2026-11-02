@@ -26,12 +26,14 @@ class Response:
         media: Union[ImageObject, AudioObject, None] = None,
         response_model: Any = None,
         metadata: Any = None,
+        usage: Optional[Usage] = None,
         **kwargs,
     ):
         self._raw_text = text
         self.media = media
         self.response_model = response_model
         self.metadata = metadata
+        self.usage = usage
         self._kwargs = kwargs
 
     @property

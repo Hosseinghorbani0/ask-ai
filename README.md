@@ -260,12 +260,16 @@ for event in OpenAI().ask_stream_events("Tell me a story"):
         print("\nDone")
 ```
 
+`UsageUpdate` events are emitted when the provider returns usage in its stream.
+`ToolCall` is a reserved event type and is not emitted by the current adapters.
+
 ### 📊 Observability
 
-Attach optional middleware to receive provider, model, latency, and retry
-metadata. Provider usage extraction and failure-reason reporting are not
-supported yet. Estimated cost is only calculated when a response already
-contains usage data; the bundled provider adapters do not currently supply it:
+Attach optional middleware to receive provider, model, latency, retry, and
+provider-reported token usage. Usage field names are normalized to
+`input_tokens`, `output_tokens`, and `total_tokens`. Estimated cost is only
+calculated when usage is available and pricing for the model is supplied;
+missing usage never produces a cost estimate:
 
 ```python
 from ask_ai import Observability, OpenAI
@@ -273,6 +277,7 @@ from ask_ai import Observability, OpenAI
 ai = OpenAI().use(Observability(on_event=print))
 response = ai.ask("Explain tracing")
 print(response.metadata.latency_ms)
+print(response.metadata.usage)
 ```
 
 ### Provider Capabilities

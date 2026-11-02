@@ -10,7 +10,9 @@ except ImportError:
 from ..base import BaseProvider, Response
 from ..capabilities import Capabilities
 from ..config import AdvancedConfig
+from ..events import TextDelta, UsageUpdate
 from ..exceptions import APIKeyError, MediaTypeNotSupportedError, ProviderError, map_provider_exception
+from ..observability import usage_from_fields
 
 logger = logging.getLogger("ask_ai")
 
@@ -83,7 +85,15 @@ class GroqProvider(BaseProvider):
         try:
             kwargs = self._build_chat_kwargs(messages, config)
             response = self.client.chat.completions.create(**kwargs)
-            return Response(text=response.choices[0].message.content or "")
+            return Response(
+                text=response.choices[0].message.content or "",
+                usage=usage_from_fields(
+                    getattr(response, "usage", None),
+                    "prompt_tokens",
+                    "completion_tokens",
+                    "total_tokens",
+                ),
+            )
         except Exception as e:
             raise map_provider_exception(e, "Groq", "API") from e
 
@@ -100,6 +110,28 @@ class GroqProvider(BaseProvider):
         except Exception as e:
             raise map_provider_exception(e, "Groq", "streaming") from e
 
+    def _send_request_stream_events(self, messages, config):
+        try:
+            kwargs = self._build_chat_kwargs(messages, config)
+            kwargs["stream"] = True
+            kwargs["stream_options"] = {"include_usage": True}
+            stream = self.client.chat.completions.create(**kwargs)
+            index = 0
+            for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield TextDelta(text=chunk.choices[0].delta.content, index=index)
+                    index += 1
+                usage = usage_from_fields(
+                    getattr(chunk, "usage", None),
+                    "prompt_tokens",
+                    "completion_tokens",
+                    "total_tokens",
+                )
+                if usage is not None:
+                    yield UsageUpdate(**usage.__dict__)
+        except Exception as e:
+            raise map_provider_exception(e, "Groq", "streaming") from e
+
     # ─── Async ─────────────────────────────────────────────
 
     async def _send_request_async(self, messages: list[dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
@@ -109,7 +141,15 @@ class GroqProvider(BaseProvider):
         try:
             kwargs = self._build_chat_kwargs(messages, config)
             response = await self.async_client.chat.completions.create(**kwargs)
-            return Response(text=response.choices[0].message.content or "")
+            return Response(
+                text=response.choices[0].message.content or "",
+                usage=usage_from_fields(
+                    getattr(response, "usage", None),
+                    "prompt_tokens",
+                    "completion_tokens",
+                    "total_tokens",
+                ),
+            )
         except Exception as e:
             raise map_provider_exception(e, "Groq", "API") from e
 
@@ -123,5 +163,27 @@ class GroqProvider(BaseProvider):
             async for chunk in stream:
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
+        except Exception as e:
+            raise map_provider_exception(e, "Groq", "streaming") from e
+
+    async def _send_request_stream_events_async(self, messages, config):
+        try:
+            kwargs = self._build_chat_kwargs(messages, config)
+            kwargs["stream"] = True
+            kwargs["stream_options"] = {"include_usage": True}
+            stream = await self.async_client.chat.completions.create(**kwargs)
+            index = 0
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield TextDelta(text=chunk.choices[0].delta.content, index=index)
+                    index += 1
+                usage = usage_from_fields(
+                    getattr(chunk, "usage", None),
+                    "prompt_tokens",
+                    "completion_tokens",
+                    "total_tokens",
+                )
+                if usage is not None:
+                    yield UsageUpdate(**usage.__dict__)
         except Exception as e:
             raise map_provider_exception(e, "Groq", "streaming") from e

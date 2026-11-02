@@ -10,8 +10,10 @@ except ImportError:
 from ..base import BaseProvider, Response
 from ..capabilities import Capabilities
 from ..config import AdvancedConfig
+from ..events import TextDelta, UsageUpdate
 from ..exceptions import APIKeyError, ProviderError, map_provider_exception
 from ..media import AudioObject, ImageObject
+from ..observability import usage_from_fields
 
 logger = logging.getLogger("ask_ai")
 
@@ -76,7 +78,11 @@ class OpenAIProvider(BaseProvider):
         try:
             kwargs = self._build_chat_kwargs(messages, config, include_tools=True)
             response = self.client.chat.completions.create(**kwargs)
-            return self._process_chat_response(response, messages, config)
+            result = self._process_chat_response(response, messages, config)
+            result.usage = usage_from_fields(
+                getattr(response, "usage", None), "prompt_tokens", "completion_tokens", "total_tokens"
+            )
+            return result
         except Exception as e:
             raise map_provider_exception(e, "OpenAI", "API") from e
 
@@ -94,6 +100,28 @@ class OpenAIProvider(BaseProvider):
         except Exception as e:
             raise map_provider_exception(e, "OpenAI", "streaming") from e
 
+    def _send_request_stream_events(self, messages, config):
+        try:
+            kwargs = self._build_chat_kwargs(messages, config, include_tools=False)
+            kwargs["stream"] = True
+            kwargs["stream_options"] = {"include_usage": True}
+            stream = self.client.chat.completions.create(**kwargs)
+            index = 0
+            for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield TextDelta(text=chunk.choices[0].delta.content, index=index)
+                    index += 1
+                usage = usage_from_fields(
+                    getattr(chunk, "usage", None),
+                    "prompt_tokens",
+                    "completion_tokens",
+                    "total_tokens",
+                )
+                if usage is not None:
+                    yield UsageUpdate(**usage.__dict__)
+        except Exception as e:
+            raise map_provider_exception(e, "OpenAI", "streaming") from e
+
     # ─── Async ─────────────────────────────────────────────
 
     async def _send_request_async(self, messages: list[dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
@@ -105,7 +133,11 @@ class OpenAIProvider(BaseProvider):
         try:
             kwargs = self._build_chat_kwargs(messages, config, include_tools=True)
             response = await self.async_client.chat.completions.create(**kwargs)
-            return await self._process_chat_response_async(response, messages, config)
+            result = await self._process_chat_response_async(response, messages, config)
+            result.usage = usage_from_fields(
+                getattr(response, "usage", None), "prompt_tokens", "completion_tokens", "total_tokens"
+            )
+            return result
         except Exception as e:
             raise map_provider_exception(e, "OpenAI", "API") from e
 
@@ -120,6 +152,28 @@ class OpenAIProvider(BaseProvider):
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
 
+        except Exception as e:
+            raise map_provider_exception(e, "OpenAI", "streaming") from e
+
+    async def _send_request_stream_events_async(self, messages, config):
+        try:
+            kwargs = self._build_chat_kwargs(messages, config, include_tools=False)
+            kwargs["stream"] = True
+            kwargs["stream_options"] = {"include_usage": True}
+            stream = await self.async_client.chat.completions.create(**kwargs)
+            index = 0
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield TextDelta(text=chunk.choices[0].delta.content, index=index)
+                    index += 1
+                usage = usage_from_fields(
+                    getattr(chunk, "usage", None),
+                    "prompt_tokens",
+                    "completion_tokens",
+                    "total_tokens",
+                )
+                if usage is not None:
+                    yield UsageUpdate(**usage.__dict__)
         except Exception as e:
             raise map_provider_exception(e, "OpenAI", "streaming") from e
 

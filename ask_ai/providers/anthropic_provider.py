@@ -9,7 +9,9 @@ except ImportError:
 from ..base import BaseProvider, Response
 from ..capabilities import Capabilities
 from ..config import AdvancedConfig
+from ..events import TextDelta, UsageUpdate
 from ..exceptions import APIKeyError, MediaTypeNotSupportedError, ProviderError, map_provider_exception
+from ..observability import usage_from_fields
 
 logger = logging.getLogger("ask_ai")
 
@@ -103,7 +105,12 @@ class AnthropicProvider(BaseProvider):
             if response.content:
                 text_content = response.content[0].text
 
-            return Response(text=text_content)
+            return Response(
+                text=text_content,
+                usage=usage_from_fields(
+                    getattr(response, "usage", None), "input_tokens", "output_tokens"
+                ),
+            )
         except Exception as e:
             raise map_provider_exception(e, "Anthropic", "API") from e
 
@@ -113,6 +120,22 @@ class AnthropicProvider(BaseProvider):
             kwargs = self._build_kwargs(messages, config)
             with self.client.messages.stream(**kwargs) as stream:
                 yield from stream.text_stream
+        except Exception as e:
+            raise map_provider_exception(e, "Anthropic", "streaming") from e
+
+    def _send_request_stream_events(self, messages, config):
+        try:
+            kwargs = self._build_kwargs(messages, config)
+            with self.client.messages.stream(**kwargs) as stream:
+                for index, text in enumerate(stream.text_stream):
+                    yield TextDelta(text=text, index=index)
+                usage = usage_from_fields(
+                    getattr(stream.get_final_message(), "usage", None),
+                    "input_tokens",
+                    "output_tokens",
+                )
+                if usage is not None:
+                    yield UsageUpdate(**usage.__dict__)
         except Exception as e:
             raise map_provider_exception(e, "Anthropic", "streaming") from e
 
@@ -130,7 +153,12 @@ class AnthropicProvider(BaseProvider):
             if response.content:
                 text_content = response.content[0].text
 
-            return Response(text=text_content)
+            return Response(
+                text=text_content,
+                usage=usage_from_fields(
+                    getattr(response, "usage", None), "input_tokens", "output_tokens"
+                ),
+            )
         except Exception as e:
             raise map_provider_exception(e, "Anthropic", "API") from e
 
@@ -141,5 +169,22 @@ class AnthropicProvider(BaseProvider):
             async with self.async_client.messages.stream(**kwargs) as stream:
                 async for text in stream.text_stream:
                     yield text
+        except Exception as e:
+            raise map_provider_exception(e, "Anthropic", "streaming") from e
+
+    async def _send_request_stream_events_async(self, messages, config):
+        try:
+            kwargs = self._build_kwargs(messages, config)
+            async with self.async_client.messages.stream(**kwargs) as stream:
+                index = 0
+                async for text in stream.text_stream:
+                    yield TextDelta(text=text, index=index)
+                    index += 1
+                message = await stream.get_final_message()
+                usage = usage_from_fields(
+                    getattr(message, "usage", None), "input_tokens", "output_tokens"
+                )
+                if usage is not None:
+                    yield UsageUpdate(**usage.__dict__)
         except Exception as e:
             raise map_provider_exception(e, "Anthropic", "streaming") from e

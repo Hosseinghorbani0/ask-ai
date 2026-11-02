@@ -10,7 +10,9 @@ except ImportError:
 from ..base import BaseProvider, Response
 from ..capabilities import Capabilities
 from ..config import AdvancedConfig
+from ..events import TextDelta, UsageUpdate
 from ..exceptions import APIKeyError, MediaTypeNotSupportedError, ProviderError, map_provider_exception
+from ..observability import usage_from_fields
 
 logger = logging.getLogger("ask_ai")
 
@@ -96,7 +98,15 @@ class GoogleProvider(BaseProvider):
                 request_options={"timeout": config.extra.get("timeout")},
             )
 
-            return Response(text=response.text)
+            return Response(
+                text=response.text,
+                usage=usage_from_fields(
+                    getattr(response, "usage_metadata", None),
+                    "prompt_token_count",
+                    "candidates_token_count",
+                    "total_token_count",
+                ),
+            )
         except Exception as e:
             raise map_provider_exception(e, "Google", "API") from e
 
@@ -125,6 +135,37 @@ class GoogleProvider(BaseProvider):
                 if chunk.text:
                     yield chunk.text
 
+        except Exception as e:
+            raise map_provider_exception(e, "Google", "streaming") from e
+
+    def _send_request_stream_events(self, messages, config):
+        try:
+            gemini_messages, system_instruction = self._convert_messages(messages)
+            generation_config = self._build_generation_config(config)
+            model = self._create_model(system_instruction)
+            if not gemini_messages:
+                return
+
+            chat = model.start_chat(history=gemini_messages[:-1])
+            response = chat.send_message(
+                gemini_messages[-1]["parts"][0],
+                generation_config=generation_config,
+                stream=True,
+                request_options={"timeout": config.extra.get("timeout")},
+            )
+            index = 0
+            for chunk in response:
+                if chunk.text:
+                    yield TextDelta(text=chunk.text, index=index)
+                    index += 1
+                usage = usage_from_fields(
+                    getattr(chunk, "usage_metadata", None),
+                    "prompt_token_count",
+                    "candidates_token_count",
+                    "total_token_count",
+                )
+                if usage is not None:
+                    yield UsageUpdate(**usage.__dict__)
         except Exception as e:
             raise map_provider_exception(e, "Google", "streaming") from e
 
@@ -158,6 +199,24 @@ class GoogleProvider(BaseProvider):
                 ),
             ), timeout=config.extra.get("timeout"))
 
-            return Response(text=response.text)
+            return Response(
+                text=response.text,
+                usage=usage_from_fields(
+                    getattr(response, "usage_metadata", None),
+                    "prompt_token_count",
+                    "candidates_token_count",
+                    "total_token_count",
+                ),
+            )
         except Exception as e:
             raise map_provider_exception(e, "Google", "API") from e
+
+    async def _send_request_stream_events_async(self, messages, config):
+        """Bridge legacy synchronous Google stream events into the event API."""
+        loop = asyncio.get_running_loop()
+        events = await loop.run_in_executor(
+            None,
+            lambda: list(self._send_request_stream_events(messages, config)),
+        )
+        for event in events:
+            yield event
