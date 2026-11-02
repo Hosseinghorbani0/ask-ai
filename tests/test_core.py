@@ -69,7 +69,9 @@ def test_all_package_modules_and_providers_import():
 
 
 def test_release_version_and_requirements_are_aligned():
-    assert ask_ai.__version__ == "0.5.0"
+    assert ask_ai.__version__ == "0.6.0rc1"
+    pyproject = open("pyproject.toml", encoding="utf-8").read()
+    assert f'version = "{ask_ai.__version__}"' in pyproject
     requirements = open("ask_ai/requirements.txt", encoding="utf-8").read()
     for package in ("openai", "anthropic>=1.0.0", "google-genai", "groq", "Pillow", "httpx"):
         assert package in requirements
