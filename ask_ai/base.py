@@ -418,10 +418,29 @@ class BaseProvider:
         if fallback_providers:
             if not isinstance(fallback_providers, (list, tuple)):
                 fallback_providers = [fallback_providers]
+            last_error = None
             for provider in fallback_providers:
-                provider_instance = provider() if isinstance(provider, type) else provider
-                yield from provider_instance.ask_stream_events(query, **kwargs)
-                return
+                emitted = False
+                try:
+                    provider_instance = provider() if isinstance(provider, type) else provider
+                    for event in provider_instance.ask_stream_events(query, **kwargs):
+                        if isinstance(event, Error):
+                            if not emitted and event.emitted_chunks == 0:
+                                last_error = event
+                                break
+                            yield event
+                            return
+                        emitted = True
+                        yield event
+                    else:
+                        return
+                except Exception as error:
+                    if emitted:
+                        raise
+                    last_error = Error(error=error, emitted_chunks=0)
+            if last_error is not None:
+                yield last_error
+            return
 
         emitted_chunks = 0
         text_parts = []
@@ -546,11 +565,29 @@ class BaseProvider:
         if fallback_providers:
             if not isinstance(fallback_providers, (list, tuple)):
                 fallback_providers = [fallback_providers]
+            last_error = None
             for provider in fallback_providers:
-                provider_instance = provider() if isinstance(provider, type) else provider
-                async for event in provider_instance.ask_stream_events_async(query, **kwargs):
-                    yield event
-                return
+                emitted = False
+                try:
+                    provider_instance = provider() if isinstance(provider, type) else provider
+                    async for event in provider_instance.ask_stream_events_async(query, **kwargs):
+                        if isinstance(event, Error):
+                            if not emitted and event.emitted_chunks == 0:
+                                last_error = event
+                                break
+                            yield event
+                            return
+                        emitted = True
+                        yield event
+                    else:
+                        return
+                except Exception as error:
+                    if emitted:
+                        raise
+                    last_error = Error(error=error, emitted_chunks=0)
+            if last_error is not None:
+                yield last_error
+            return
 
         emitted_chunks = 0
         text_parts = []

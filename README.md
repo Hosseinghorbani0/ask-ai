@@ -34,11 +34,17 @@
 ## ⚡ Quick Start (5 seconds)
 
 ```bash
-pip install askai-python
+pip install "askai-python[openai,groq]"
 ```
 
-The Google provider uses the `google-genai` SDK. Install its optional dependency
-with `pip install "askai-python[google]"`. Python 3.10 or newer is required.
+Provider SDKs are optional dependencies. Install the extras you need:
+
+- `pip install "askai-python[openai]"` for OpenAI, Azure, and OpenRouter.
+- `pip install "askai-python[anthropic]"`, `pip install "askai-python[google]"`,
+  or `pip install "askai-python[groq]"` for those providers.
+- `pip install "askai-python[all]"` for every provider SDK.
+
+Python 3.10 or newer is required.
 
 ```python
 from ask_ai import OpenAI, Groq

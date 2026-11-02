@@ -16,7 +16,7 @@ class MediaPolicy:
     timeout: float = 30.0
     allow_private: bool = False
 
-    def validate_url(self, url: str) -> None:
+    def _validated_addresses(self, url: str) -> tuple[str, list[str]]:
         parsed = urlparse(url)
         if parsed.scheme != "https" or not parsed.hostname:
             raise MediaSecurityError("Media URLs must use HTTPS and include a hostname.")
@@ -53,6 +53,10 @@ class MediaPolicy:
                     raise MediaSecurityError(
                         f"Media host resolves to a non-public IP address: {address}"
                     )
+        return parsed.hostname, [str(address) for address in addresses]
+
+    def validate_url(self, url: str) -> None:
+        self._validated_addresses(url)
 
     def validate_mime(self, mime_type: str) -> None:
         if self.allowed_mime_types and mime_type not in self.allowed_mime_types:
@@ -62,14 +66,19 @@ class MediaPolicy:
 def download_media(url: str, policy: Optional[MediaPolicy] = None) -> bytes:
     """Stream media bytes with URL, MIME, size, and timeout validation."""
     policy = policy or MediaPolicy()
-    policy.validate_url(url)
+    hostname, addresses = policy._validated_addresses(url)
     try:
         import httpx
     except ImportError as error:
         raise MediaSecurityError("httpx is required for secure media downloads.") from error
 
     try:
-        with httpx.Client(timeout=policy.timeout, follow_redirects=False) as client:
+        transport = _create_pinned_transport(httpx, hostname, addresses)
+        with httpx.Client(
+            timeout=policy.timeout,
+            follow_redirects=False,
+            transport=transport,
+        ) as client:
             with client.stream("GET", url) as response:
                 if 300 <= response.status_code < 400:
                     raise MediaSecurityError(
@@ -103,3 +112,41 @@ def download_media(url: str, policy: Optional[MediaPolicy] = None) -> bytes:
         raise
     except Exception as error:
         raise MediaSecurityError(f"Secure media download failed: {error}") from error
+
+
+def _create_pinned_transport(httpx, hostname: str, addresses: list[str]):
+    import httpcore
+
+    normalized_hostname = hostname.encode("idna").decode("ascii").lower().rstrip(".")
+
+    class PinnedNetworkBackend(httpcore.SyncBackend):
+        def connect_tcp(
+            self,
+            host,
+            port,
+            timeout=None,
+            local_address=None,
+            socket_options=None,
+        ):
+            if host.lower().rstrip(".") != normalized_hostname:
+                raise httpcore.ConnectError(
+                    "Media transport attempted to connect to an unvalidated host."
+                )
+
+            last_error = None
+            for address in addresses:
+                try:
+                    return super().connect_tcp(
+                        address,
+                        port,
+                        timeout=timeout,
+                        local_address=local_address,
+                        socket_options=socket_options,
+                    )
+                except (httpcore.ConnectError, httpcore.ConnectTimeout) as error:
+                    last_error = error
+            raise last_error
+
+    transport = httpx.HTTPTransport()
+    transport._pool._network_backend = PinnedNetworkBackend()
+    return transport

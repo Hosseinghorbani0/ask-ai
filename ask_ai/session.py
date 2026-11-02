@@ -94,8 +94,14 @@ class ConversationSession:
         started_at = time.perf_counter()
         config = self.provider._build_final_config(kwargs)
         messages = [*self.messages, {"role": "user", "content": query}]
+        retry = int(
+            kwargs.get("retry", config.extra.get("retry", DEFAULT_RETRY_COUNT)) or 0
+        )
         chunks = []
-        for chunk in self.provider._send_request_stream(messages, config):
+        for chunk in self.provider._iter_with_retry(
+            lambda: self.provider._send_request_stream(messages, config),
+            retry,
+        ):
             chunks.append(chunk)
             yield chunk
         self.messages.extend(
@@ -113,8 +119,14 @@ class ConversationSession:
         started_at = time.perf_counter()
         config = self.provider._build_final_config(kwargs)
         messages = [*self.messages, {"role": "user", "content": query}]
+        retry = int(
+            kwargs.get("retry", config.extra.get("retry", DEFAULT_RETRY_COUNT)) or 0
+        )
         chunks = []
-        async for chunk in self.provider._send_request_stream_async(messages, config):
+        async for chunk in self.provider._aiter_with_retry(
+            lambda: self.provider._send_request_stream_async(messages, config),
+            retry,
+        ):
             chunks.append(chunk)
             yield chunk
         self.messages.extend(

@@ -12,8 +12,15 @@ No frameworks. No servers. No overengineering.
 ## ⚡ Quick Start (5 seconds)
 
 ```bash
-pip install askai-python
+pip install "askai-python[openai,groq]"
 ```
+
+Provider SDKs are optional. Install the extras you need:
+
+- `pip install "askai-python[openai]"` for OpenAI, Azure, and OpenRouter.
+- `pip install "askai-python[anthropic]"`, `pip install "askai-python[google]"`,
+  or `pip install "askai-python[groq]"` for those providers.
+- `pip install "askai-python[all]"` for every provider SDK.
 
 ```python
 from ask_ai import OpenAI, Groq
@@ -150,20 +157,33 @@ print(user.name)  # "Alice"
 |----------|-------|-------------|
 | **OpenAI** | `OpenAI` | Text, Images (DALL-E), Vision |
 | **Anthropic** | `Anthropic` | Text, Vision (Claude 3.5) |
-| **Google** | `Google` | Text, Images, Video, Audio |
+| **Google** | `Google` | Text, Vision |
 | **Groq** | `Groq` | Ultra-fast Llama 3 & Mixtral |
 | **Azure** | `Azure` | Enterprise-grade OpenAI |
 | **OpenRouter**| `OpenRouter`| 100+ community models |
 
 ---
 
+## Conversation Sessions
+
+Sessions provide optional in-memory conversation history:
+
+```python
+session = OpenAI().session(max_messages=20)
+session.ask("My name is Ada.")
+print(session.ask("What is my name?").text)
+```
+
+Session state is not persisted, and session requests do not support
+`response_model` validation yet.
+
 ## 🗺️ Roadmap
 
 ### 🚀 Roadmap 2.0 (Active)
 - [x] Provider Fallback chaining & Pydantic Structured Output support
+- [x] Optional in-memory conversation sessions
 - [ ] Multi-Modal Vision input (image to text) for all key providers
 - [ ] Native support for tools/function calling execution
-- [ ] Memory buffer / session-based conversation management
 
 ### 🏁 Roadmap 1.0 (Completed)
 - ~~[x] Baseline multiple providers~~

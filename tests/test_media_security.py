@@ -191,3 +191,75 @@ def test_media_policy_rejects_host_with_any_non_public_dns_answer(monkeypatch):
 
     with pytest.raises(MediaSecurityError, match="non-public IP"):
         MediaPolicy().validate_url("https://mixed.example/resource")
+
+
+def test_media_download_connects_only_to_the_validated_dns_address(monkeypatch):
+    import httpcore
+
+    dns_calls = []
+    connection_hosts = []
+    requested_urls = []
+
+    def resolve(host, port, type):
+        dns_calls.append(host)
+        address = "93.184.216.34" if len(dns_calls) == 1 else "127.0.0.1"
+        return [
+            (
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+                6,
+                "",
+                (address, port),
+            )
+        ]
+
+    monkeypatch.setattr(socket, "getaddrinfo", resolve)
+    def connect_tcp(self, host, port, **kwargs):
+        connection_hosts.append(host)
+        return object()
+
+    monkeypatch.setattr(httpcore.SyncBackend, "connect_tcp", connect_tcp)
+
+    class Response:
+        status_code = 200
+        headers = {"content-type": "image/png"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_bytes(self):
+            yield b"\x89PNG\r\n\x1a\n"
+
+    class Client:
+        def __init__(self, **kwargs):
+            self.backend = kwargs["transport"]._pool._network_backend
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def stream(self, method, url):
+            requested_urls.append(url)
+            self.backend.connect_tcp(
+                host="media.example",
+                port=443,
+                timeout=1,
+                local_address=None,
+                socket_options=None,
+            )
+            return Response()
+
+    monkeypatch.setattr("httpx.Client", Client)
+
+    assert download_media("https://media.example/image.png") == b"\x89PNG\r\n\x1a\n"
+    assert requested_urls == ["https://media.example/image.png"]
+    assert connection_hosts == ["93.184.216.34"]
+    assert dns_calls == ["media.example"]
