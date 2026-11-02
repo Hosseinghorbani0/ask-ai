@@ -403,7 +403,14 @@ class BaseProvider:
 
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
-        yield from self._send_request_stream(messages, final_config)
+        retry = int(
+            kwargs.get("retry", final_config.extra.get("retry", DEFAULT_RETRY_COUNT))
+            or 0
+        )
+        yield from self._iter_with_retry(
+            lambda: self._send_request_stream(messages, final_config),
+            retry,
+        )
 
     def ask_stream_events(self, query: str, **kwargs) -> Iterator[Any]:
         """Yield typed events while preserving the legacy text stream API."""
@@ -421,8 +428,15 @@ class BaseProvider:
         usage = None
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
+        retry = int(
+            kwargs.get("retry", final_config.extra.get("retry", DEFAULT_RETRY_COUNT))
+            or 0
+        )
         try:
-            for event in self._send_request_stream_events(messages, final_config):
+            for event in self._iter_with_retry(
+                lambda: self._send_request_stream_events(messages, final_config),
+                retry,
+            ):
                 if isinstance(event, TextDelta):
                     emitted_chunks += 1
                     text_parts.append(event.text)
@@ -516,7 +530,14 @@ class BaseProvider:
 
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
-        async for chunk in self._send_request_stream_async(messages, final_config):
+        retry = int(
+            kwargs.get("retry", final_config.extra.get("retry", DEFAULT_RETRY_COUNT))
+            or 0
+        )
+        async for chunk in self._aiter_with_retry(
+            lambda: self._send_request_stream_async(messages, final_config),
+            retry,
+        ):
             yield chunk
 
     async def ask_stream_events_async(self, query: str, **kwargs) -> AsyncIterator[Any]:
@@ -536,8 +557,15 @@ class BaseProvider:
         usage = None
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
+        retry = int(
+            kwargs.get("retry", final_config.extra.get("retry", DEFAULT_RETRY_COUNT))
+            or 0
+        )
         try:
-            async for event in self._send_request_stream_events_async(messages, final_config):
+            async for event in self._aiter_with_retry(
+                lambda: self._send_request_stream_events_async(messages, final_config),
+                retry,
+            ):
                 if isinstance(event, TextDelta):
                     emitted_chunks += 1
                     text_parts.append(event.text)
@@ -612,6 +640,58 @@ class BaseProvider:
         return messages
 
     # ─── Retry Logic ────────────────────────────────────────
+
+    def _iter_with_retry(self, iterator_factory, retry: int):
+        attempts = 0
+        self._retry_count = 0
+        while True:
+            emitted = False
+            try:
+                for item in iterator_factory():
+                    emitted = True
+                    yield item
+                self._retry_count = attempts
+                return
+            except Exception as error:
+                if emitted or attempts >= retry or not self._is_retryable_error(error):
+                    raise
+                attempts += 1
+                self._retry_count = attempts
+                delay = min(2 ** attempts + random.uniform(0, 1), 30)
+                logger.warning(
+                    "Transient streaming error (%s). Retrying in %.1fs... (%d/%d)",
+                    error.__class__.__name__,
+                    delay,
+                    attempts,
+                    retry,
+                )
+                time.sleep(delay)
+
+    async def _aiter_with_retry(self, iterator_factory, retry: int):
+        attempts = 0
+        self._retry_count = 0
+        while True:
+            emitted = False
+            try:
+                async for item in iterator_factory():
+                    emitted = True
+                    yield item
+                self._retry_count = attempts
+                return
+            except Exception as error:
+                if emitted or attempts >= retry or not self._is_retryable_error(error):
+                    raise
+                attempts += 1
+                self._retry_count = attempts
+                delay = min(2 ** attempts + random.uniform(0, 1), 30)
+                logger.warning(
+                    "Transient async streaming error (%s). Retrying in %.1fs... (%d/%d)",
+                    error.__class__.__name__,
+                    delay,
+                    attempts,
+                    retry,
+                )
+                await asyncio.sleep(delay)
 
     def _execute_with_retry(self, func, messages, config, output_type, retry):
         """Execute a sync function with exponential backoff + jitter."""

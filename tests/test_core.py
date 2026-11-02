@@ -10,6 +10,7 @@ from ask_ai import AdvancedConfig, Azure, OpenAI
 from ask_ai.base import BaseProvider
 from ask_ai.exceptions import (
     ProviderAuthError,
+    ProviderConnectionError,
     ProviderInvalidRequestError,
     ProviderRateLimitError,
     ProviderTimeoutError,
@@ -95,6 +96,10 @@ def test_provider_exception_mapper_and_retry_policy():
     assert isinstance(map_provider_exception(TimeoutError("timed out"), "Test"), ProviderTimeoutError)
     assert isinstance(map_provider_exception(ErrorWithStatus(422), "Test"), ProviderInvalidRequestError)
     assert isinstance(map_provider_exception(ErrorWithStatus(503), "Test"), ProviderUnavailableError)
+    assert isinstance(
+        map_provider_exception(type("APIConnectionError", (Exception,), {})("Connection error."), "Test"),
+        ProviderConnectionError,
+    )
 
     provider = object.__new__(BaseProvider)
     assert provider._is_retryable_error(ProviderRateLimitError("rate limited")) is True
@@ -206,6 +211,188 @@ def test_retry_zero_explicitly_disables_default_retries(monkeypatch):
         provider.ask("hello", retry=0)
 
     assert provider.calls == 1
+
+
+def test_openrouter_async_stream_retries_connection_before_first_chunk(monkeypatch):
+    class APIConnectionError(Exception):
+        pass
+
+    class AsyncStream:
+        def __init__(self):
+            self.chunks = iter(
+                [
+                    type(
+                        "Chunk",
+                        (),
+                        {
+                            "choices": [
+                                type(
+                                    "Choice",
+                                    (),
+                                    {
+                                        "delta": type(
+                                            "Delta", (), {"content": "ready"}
+                                        )()
+                                    },
+                                )()
+                            ]
+                        },
+                    )()
+                ]
+            )
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self.chunks)
+            except StopIteration:
+                raise StopAsyncIteration
+
+    class Completions:
+        def __init__(self):
+            self.calls = 0
+            self.fail_always = False
+
+        async def create(self, **kwargs):
+            self.calls += 1
+            if self.fail_always or self.calls == 1:
+                raise APIConnectionError("Connection error.")
+            return AsyncStream()
+
+    completions = Completions()
+    provider = object.__new__(OpenRouterProvider)
+    provider.model = "openai/gpt-4o"
+    provider.persona = None
+    provider.config = AdvancedConfig()
+    provider.strict_options = False
+    provider._async_client = type(
+        "Client",
+        (),
+        {"chat": type("Chat", (), {"completions": completions})()},
+    )()
+
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr("ask_ai.base.asyncio.sleep", no_sleep)
+
+    async def collect():
+        return [chunk async for chunk in provider.ask_stream_async("hello")]
+
+    assert asyncio.run(collect()) == ["ready"]
+    assert completions.calls == 2
+    assert provider._retry_count == 1
+
+    completions.fail_always = True
+
+    async def collect_without_retry():
+        with pytest.raises(
+            ProviderConnectionError,
+            match="OpenRouter streaming failed: Connection error",
+        ):
+            async for _chunk in provider.ask_stream_async("hello", retry=0):
+                pass
+
+    asyncio.run(collect_without_retry())
+    assert completions.calls == 3
+
+
+def test_sync_stream_retries_before_first_chunk(monkeypatch):
+    class FlakyStreamProvider(BaseProvider):
+        def __init__(self):
+            super().__init__(api_key="test")
+            self.calls = 0
+
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request_stream(self, messages, config):
+            self.calls += 1
+            if self.calls == 1:
+                raise ProviderConnectionError("connection error")
+            yield "ready"
+
+    monkeypatch.setattr("ask_ai.base.time.sleep", lambda _delay: None)
+    provider = FlakyStreamProvider()
+
+    assert list(provider.ask_stream("hello")) == ["ready"]
+    assert provider.calls == 2
+
+
+def test_async_stream_does_not_retry_after_first_chunk(monkeypatch):
+    class FailingStreamProvider(BaseProvider):
+        def __init__(self):
+            super().__init__(api_key="test")
+            self.calls = 0
+
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        async def _send_request_stream_async(self, messages, config):
+            self.calls += 1
+            yield "first"
+            raise ProviderConnectionError("connection dropped")
+
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr("ask_ai.base.asyncio.sleep", no_sleep)
+    provider = FailingStreamProvider()
+
+    async def collect():
+        chunks = []
+        with pytest.raises(ProviderConnectionError):
+            async for chunk in provider.ask_stream_async("hello"):
+                chunks.append(chunk)
+        return chunks
+
+    assert asyncio.run(collect()) == ["first"]
+    assert provider.calls == 1
+
+
+def test_async_stream_events_retry_before_first_event(monkeypatch):
+    class EventsProvider(BaseProvider):
+        def __init__(self):
+            super().__init__(api_key="test")
+            self.calls = 0
+
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        async def _send_request_stream_events_async(self, messages, config):
+            self.calls += 1
+            if self.calls == 1:
+                raise ProviderConnectionError("connection error")
+            yield ask_ai.TextDelta(text="ready", index=0)
+
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr("ask_ai.base.asyncio.sleep", no_sleep)
+    provider = EventsProvider()
+
+    async def collect():
+        return [
+            event
+            async for event in provider.ask_stream_events_async("hello")
+        ]
+
+    events = asyncio.run(collect())
+    assert provider.calls == 2
+    assert isinstance(events[0], ask_ai.TextDelta)
+    assert events[0].text == "ready"
+    assert isinstance(events[-1], ask_ai.Completed)
 
 
 def test_provider_request_timeout_is_forwarded():

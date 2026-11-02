@@ -38,6 +38,11 @@ class ProviderTimeoutError(AskAINetworkError, ProviderError):
     pass
 
 
+class ProviderConnectionError(AskAINetworkError, ProviderError):
+    """Raised when a provider request fails due to a network connection error."""
+    pass
+
+
 class ProviderInvalidRequestError(ProviderError):
     """Raised when a provider rejects request parameters."""
     pass
@@ -98,11 +103,19 @@ def map_provider_exception(error: Exception, provider: str, operation: str = "re
         for marker in ("ratelimit", "rate_limit", "rate limit", "too many requests")
     ):
         return ProviderRateLimitError(f"{prefix}: {error}")
+    if any(marker in error_name or marker in error_text for marker in ("timeout", "timed out")):
+        return ProviderTimeoutError(f"{prefix}: {error}")
     if any(
         marker in error_name or marker in error_text
-        for marker in ("timeout", "timed out", "connecterror", "connectionerror", "connection reset")
+        for marker in (
+            "connecterror",
+            "connectionerror",
+            "connection reset",
+            "connection refused",
+            "connection error",
+        )
     ):
-        return ProviderTimeoutError(f"{prefix}: {error}")
+        return ProviderConnectionError(f"{prefix}: {error}")
     if isinstance(status_code, int) and status_code >= 500:
         return ProviderUnavailableError(f"{prefix}: {error}")
     if status_code in (400, 404, 422) or any(

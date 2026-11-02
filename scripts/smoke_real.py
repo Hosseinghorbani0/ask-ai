@@ -65,6 +65,25 @@ def _safe_error(error: Exception, env: Mapping[str, str]) -> str:
     return re.sub(r"\b(?:sk|key)-[A-Za-z0-9_-]{12,}\b", "[REDACTED]", message)
 
 
+def _run_async_checks(
+    checks: Mapping[str, Callable[[], Any]],
+    env: Mapping[str, str],
+) -> dict[str, tuple[str, str]]:
+    async def run():
+        results = {}
+        for check_name, operation in checks.items():
+            try:
+                with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                    detail = await operation()
+            except Exception as error:
+                results[check_name] = ("FAIL", _safe_error(error, env))
+            else:
+                results[check_name] = ("PASS", detail)
+        return results
+
+    return asyncio.run(run())
+
+
 def _check(
     results: list[dict[str, str]],
     provider_name: str,
@@ -171,19 +190,15 @@ def _run_provider_checks(
 
     _check(results, provider_name, "sync_streaming", sync_streaming, env)
 
-    def async_ask() -> str:
-        async def run():
-            return await provider.ask_async(
-                "Reply with one short word: ready.", max_tokens=8, retry=0
-            )
-
-        response = asyncio.run(run())
+    async def async_ask():
+        response = await provider.ask_async(
+            "Reply with one short word: ready.", max_tokens=8, retry=0
+        )
         return f"text={_require_text(response.text, 'async ask')[:40]!r}"
 
-    _check(results, provider_name, "async_ask", async_ask, env)
-
-    def async_streaming() -> str:
-        async def run():
+    async def async_streaming():
+        client = getattr(provider, "_async_client", None)
+        try:
             chunks = []
             started = time.perf_counter()
             first_chunk_ms = None
@@ -193,13 +208,17 @@ def _run_provider_checks(
                 if first_chunk_ms is None:
                     first_chunk_ms = (time.perf_counter() - started) * 1000
                 chunks.append(chunk)
-            return chunks, first_chunk_ms
+            _require_text("".join(chunks), "async streaming")
+            return f"chunks={len(chunks)}, first_chunk_ms={first_chunk_ms:.1f}"
+        finally:
+            if client is not None:
+                await client.close()
 
-        chunks, first_chunk_ms = asyncio.run(run())
-        _require_text("".join(chunks), "async streaming")
-        return f"chunks={len(chunks)}, first_chunk_ms={first_chunk_ms:.1f}"
-
-    _check(results, provider_name, "async_streaming", async_streaming, env)
+    for check_name, (status, detail) in _run_async_checks(
+        {"async_ask": async_ask, "async_streaming": async_streaming},
+        env,
+    ).items():
+        _record(results, provider_name, check_name, status, detail)
 
     def structured_output() -> str:
         from pydantic import BaseModel

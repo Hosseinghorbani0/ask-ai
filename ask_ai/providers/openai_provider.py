@@ -25,6 +25,8 @@ logger = logging.getLogger("ask_ai")
 
 
 class OpenAIProvider(BaseProvider):
+    provider_name = "OpenAI"
+
     def capabilities(self) -> Capabilities:
         return Capabilities(
             streaming=True,
@@ -102,7 +104,7 @@ class OpenAIProvider(BaseProvider):
             )
             return result
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "API") from e
+            raise map_provider_exception(e, self.provider_name, "API") from e
 
     def _send_request_stream(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Iterator[str]:
         """Sync streaming — yields text chunks."""
@@ -116,7 +118,7 @@ class OpenAIProvider(BaseProvider):
                     yield chunk.choices[0].delta.content
 
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "streaming") from e
+            raise map_provider_exception(e, self.provider_name, "streaming") from e
 
     def _send_request_stream_events(self, messages, config):
         try:
@@ -138,7 +140,7 @@ class OpenAIProvider(BaseProvider):
                 if usage is not None:
                     yield UsageUpdate(**usage.__dict__)
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "streaming") from e
+            raise map_provider_exception(e, self.provider_name, "streaming") from e
 
     # ─── Async ─────────────────────────────────────────────
 
@@ -169,7 +171,7 @@ class OpenAIProvider(BaseProvider):
             )
             return result
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "API") from e
+            raise map_provider_exception(e, self.provider_name, "API") from e
 
     async def _send_request_stream_async(self, messages: list[dict[str, str]], config: AdvancedConfig) -> AsyncIterator[str]:
         """Async streaming — yields text chunks."""
@@ -183,7 +185,7 @@ class OpenAIProvider(BaseProvider):
                     yield chunk.choices[0].delta.content
 
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "streaming") from e
+            raise map_provider_exception(e, self.provider_name, "streaming") from e
 
     async def _send_request_stream_events_async(self, messages, config):
         try:
@@ -205,7 +207,7 @@ class OpenAIProvider(BaseProvider):
                 if usage is not None:
                     yield UsageUpdate(**usage.__dict__)
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "streaming") from e
+            raise map_provider_exception(e, self.provider_name, "streaming") from e
 
     # ─── Helpers ───────────────────────────────────────────
 
@@ -312,7 +314,7 @@ class OpenAIProvider(BaseProvider):
                 media=ImageObject(img_data)
             )
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "image generation") from e
+            raise map_provider_exception(e, self.provider_name, "image generation") from e
 
     async def _generate_image_async(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Response:
         prompt = messages[-1]["content"]
@@ -332,7 +334,7 @@ class OpenAIProvider(BaseProvider):
                 media=ImageObject(img_data)
             )
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "image generation") from e
+            raise map_provider_exception(e, self.provider_name, "image generation") from e
 
     # ─── Audio Generation ──────────────────────────────────
 
@@ -350,7 +352,7 @@ class OpenAIProvider(BaseProvider):
                 media=AudioObject(response.content)
             )
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "audio generation") from e
+            raise map_provider_exception(e, self.provider_name, "audio generation") from e
 
     async def _generate_audio_async(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Response:
         text = messages[-1]["content"]
@@ -366,7 +368,7 @@ class OpenAIProvider(BaseProvider):
                 media=AudioObject(response.content)
             )
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "audio generation") from e
+            raise map_provider_exception(e, self.provider_name, "audio generation") from e
 
 
 # ─── Download Helpers ──────────────────────────────────────

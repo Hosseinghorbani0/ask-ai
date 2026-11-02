@@ -20,6 +20,7 @@
 - Native JSON Schema requests for structured responses across supported providers, with narrowly scoped prompt-only fallback and continued local validation.
 - Warn on unknown option names with spelling suggestions; opt-in `strict_options=True` raises an error. `safe_mode` emits a deprecation warning because it has no defined behavior.
 - Emit observability failure events with `failure_reason`; usage extraction, structured output, and streaming usage events are mock-tested but have not been verified against live provider APIs.
+- Retry transient streaming failures only before the first chunk/event; classify network connection failures separately from timeouts.
 
 ## 0.5.0 - 2026-10-30
 

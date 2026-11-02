@@ -57,7 +57,10 @@ The default is `retry=2`, allowing up to three total attempts for retryable
 timeouts/network errors, 429 rate limits, and 5xx provider errors. Retries use
 exponential backoff with jitter; authentication and invalid-request errors are
 not retried. Pass `retry=0` to make one attempt, or `retry=N` to choose another
-retry count. Streaming requests are not retried.
+retry count. Streaming requests retry only before the first chunk/event; after
+output begins, errors propagate without restarting the stream. Connection
+failures are reported as `ProviderConnectionError`, distinct from
+`ProviderTimeoutError`.
 
 ## Option validation and `safe_mode`
 

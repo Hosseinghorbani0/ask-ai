@@ -11,6 +11,8 @@ from .openai_provider import OpenAIProvider
 
 
 class AzureProvider(OpenAIProvider):
+    provider_name = "Azure OpenAI"
+
     """Azure OpenAI provider. Inherits all functionality from OpenAIProvider."""
 
     def __init__(self, api_key: str = None, model: str = None, endpoint: str = None,

@@ -47,6 +47,8 @@ with validation retries, token usage and missing-cost behavior, fallback from
 an invalid key to a valid provider, two-turn session context, and a one-second
 timeout. Router routing with static reliability profiles is checked when at least
 two providers are configured.
+The async request and async stream checks share one event loop so they can safely
+reuse the provider's cached async client.
 Small output limits and inexpensive model IDs are used. The current model IDs
 are listed in `scripts/smoke_real.py`.
 

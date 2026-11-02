@@ -14,6 +14,8 @@ from .openai_provider import OpenAIProvider
 
 
 class OpenRouterProvider(OpenAIProvider):
+    provider_name = "OpenRouter"
+
     def capabilities(self) -> Capabilities:
         return Capabilities(
             streaming=True,

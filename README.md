@@ -118,7 +118,8 @@ response = ai.ask("Write a script", retry=3, timeout=10)
 Requests default to `retry=2` (up to three attempts) for retryable timeout,
 connection, rate-limit (`429`), and server (`5xx`) errors. Authentication and
 invalid-request errors are not retried; use `retry=0` to disable retries.
-Streaming requests are not retried.
+Streaming retries occur only before the first chunk/event, so already-emitted
+output is never duplicated.
 
 ### System Configuration 
 Set system prompts and temperature directly:
