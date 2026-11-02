@@ -7,7 +7,7 @@ name = "askai-python"
 version = "0.5.0"
 description = "AI Made Stupid Simple. Unified API for OpenAI, Groq, Google, Anthropic, and more."
 readme = "docs/PYPI_README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
   {name = "Hossein Ghorbani", email = "hosseingh1068@gmail.com"}
@@ -18,7 +18,6 @@ classifiers = [
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -34,7 +33,7 @@ dependencies = []
 [project.optional-dependencies]
 openai = ["openai>=1.0.0"]
 anthropic = ["anthropic>=0.20.0"]
-google = ["google-generativeai>=0.5.0"]
+google = ["google-genai>=1.0.0"]
 groq = ["groq>=0.4.0"]
 media = ["Pillow>=9.0.0"]
 httpx = ["httpx>=0.24.0"]
@@ -42,7 +41,7 @@ structured = ["pydantic>=1.10", "jsonschema>=4.0"]
 all = [
   "openai>=1.0.0",
   "anthropic>=0.20.0",
-  "google-generativeai>=0.5.0",
+  "google-genai>=1.0.0",
   "groq>=0.4.0",
   "Pillow>=9.0.0",
   "httpx>=0.24.0",
@@ -69,12 +68,12 @@ exclude = ["assets*", "docs*", "tests*", ".gemini*"]
 # ─── Ruff (Linter + Formatter) ─────────────────────────────
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py310"
 line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP"]
-ignore = ["E501"]
+ignore = ["E501", "UP007", "UP035", "UP045"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["ask_ai"]

@@ -89,20 +89,10 @@ def test_non_chat_provider_sync_response_includes_usage(provider_class, monkeypa
             text="answer",
             usage_metadata=_usage_source(provider_class),
         )
-        chat = SimpleNamespace(send_message=lambda *args, **kwargs: response)
-        monkeypatch.setattr(
-            provider,
-            "_build_generation_config",
-            lambda config: None,
-            raising=False,
-        )
-        monkeypatch.setattr(
-            provider,
-            "_create_model",
-            lambda system_instruction=None: SimpleNamespace(
-                start_chat=lambda history: chat
-            ),
-            raising=False,
+        provider.client = SimpleNamespace(
+            models=SimpleNamespace(
+                generate_content=lambda **kwargs: response
+            )
         )
 
     response = provider._send_request(MESSAGES, AdvancedConfig())
@@ -130,21 +120,18 @@ def test_non_chat_provider_async_response_includes_usage(provider_class, monkeyp
             text="answer",
             usage_metadata=_usage_source(provider_class),
         )
-        chat = SimpleNamespace(send_message=lambda *args, **kwargs: response)
-        monkeypatch.setattr(
-            provider,
-            "_build_generation_config",
-            lambda config: None,
-            raising=False,
+        provider.client = SimpleNamespace(
+            aio=SimpleNamespace(
+                models=SimpleNamespace(
+                    generate_content=lambda **kwargs: None
+                )
+            )
         )
-        monkeypatch.setattr(
-            provider,
-            "_create_model",
-            lambda system_instruction=None: SimpleNamespace(
-                start_chat=lambda history: chat
-            ),
-            raising=False,
-        )
+
+        async def generate_content(**kwargs):
+            return response
+
+        provider.client.aio.models.generate_content = generate_content
 
     response = asyncio.run(provider._send_request_async(MESSAGES, AdvancedConfig()))
 
@@ -306,13 +293,10 @@ def test_non_chat_provider_stream_events_include_usage(provider_class, monkeypat
             SimpleNamespace(text="hello", usage_metadata=None),
             SimpleNamespace(text="", usage_metadata=_usage_source(provider_class)),
         ]
-        chat = SimpleNamespace(send_message=lambda *args, **kwargs: iter(chunks))
-        monkeypatch.setattr(provider, "_build_generation_config", lambda config: None, raising=False)
-        monkeypatch.setattr(
-            provider,
-            "_create_model",
-            lambda system_instruction=None: SimpleNamespace(start_chat=lambda history: chat),
-            raising=False,
+        provider.client = SimpleNamespace(
+            models=SimpleNamespace(
+                generate_content_stream=lambda **kwargs: iter(chunks)
+            )
         )
 
     events = list(provider._send_request_stream_events(MESSAGES, AdvancedConfig()))
@@ -346,17 +330,18 @@ def test_non_chat_provider_async_stream_events_include_usage(provider_class, mon
             messages=SimpleNamespace(stream=lambda **kwargs: MessageStream())
         )
     else:
-        chunks = [
-            SimpleNamespace(text="hello", usage_metadata=None),
-            SimpleNamespace(text="", usage_metadata=_usage_source(provider_class)),
-        ]
-        chat = SimpleNamespace(send_message=lambda *args, **kwargs: iter(chunks))
-        monkeypatch.setattr(provider, "_build_generation_config", lambda config: None, raising=False)
-        monkeypatch.setattr(
-            provider,
-            "_create_model",
-            lambda system_instruction=None: SimpleNamespace(start_chat=lambda history: chat),
-            raising=False,
+        async def generate_content_stream(**kwargs):
+            yield SimpleNamespace(text="hello", usage_metadata=None)
+            yield SimpleNamespace(
+                text="", usage_metadata=_usage_source(provider_class)
+            )
+
+        provider.client = SimpleNamespace(
+            aio=SimpleNamespace(
+                models=SimpleNamespace(
+                    generate_content_stream=generate_content_stream
+                )
+            )
         )
 
     async def collect():

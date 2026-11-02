@@ -25,7 +25,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/askai-python.svg)](https://pypi.org/project/askai-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 
 
@@ -36,6 +36,9 @@
 ```bash
 pip install askai-python
 ```
+
+The Google provider uses the `google-genai` SDK. Install its optional dependency
+with `pip install "askai-python[google]"`. Python 3.10 or newer is required.
 
 ```python
 from ask_ai import OpenAI, Groq

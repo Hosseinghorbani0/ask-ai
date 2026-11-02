@@ -2,9 +2,14 @@
 
 ## 0.6.0 - Unreleased
 
+### Breaking changes
+
+- The minimum supported Python version is now 3.10.
+
 ### Added
 
 - Normalize provider-reported token usage on responses and streaming `UsageUpdate` events; estimated cost remains unavailable when usage is missing.
+- Migrate the Google provider to the `google-genai` SDK with native async requests and incremental async streaming.
 
 ## 0.5.0 - 2026-10-30
 
