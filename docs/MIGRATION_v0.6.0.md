@@ -43,8 +43,11 @@ the `output_config.format` parameter.
 ## Retry behavior
 
 Provider SDK retries are disabled to avoid stacking them with ask-ai retries.
-As a result, the default `retry=0` makes one request and does not retry transient
-failures. Pass `retry=N` to enable ask-ai retries for retryable errors.
+The default is `retry=2`, allowing up to three total attempts for retryable
+timeouts/network errors, 429 rate limits, and 5xx provider errors. Retries use
+exponential backoff with jitter; authentication and invalid-request errors are
+not retried. Pass `retry=0` to make one attempt, or `retry=N` to choose another
+retry count. Streaming requests are not retried.
 
 ## Option validation and `safe_mode`
 

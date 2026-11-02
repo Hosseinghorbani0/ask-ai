@@ -2,7 +2,7 @@ import time
 from collections.abc import AsyncIterator, Iterator
 from typing import Any, Optional
 
-from .base import Response
+from .base import DEFAULT_RETRY_COUNT, Response
 
 
 class ConversationSession:
@@ -47,7 +47,10 @@ class ConversationSession:
             messages,
             config,
             kwargs.get("output_type"),
-            int(kwargs.get("retry", config.extra.get("retry", 0)) or 0),
+            int(
+                kwargs.get("retry", config.extra.get("retry", DEFAULT_RETRY_COUNT))
+                or 0
+            ),
         )
         response = self.provider._attach_metadata(
             response,
@@ -70,7 +73,10 @@ class ConversationSession:
             messages,
             config,
             kwargs.get("output_type"),
-            int(kwargs.get("retry", config.extra.get("retry", 0)) or 0),
+            int(
+                kwargs.get("retry", config.extra.get("retry", DEFAULT_RETRY_COUNT))
+                or 0
+            ),
         )
         response = self.provider._attach_metadata(
             response,

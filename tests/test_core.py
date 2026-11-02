@@ -99,7 +99,90 @@ def test_provider_exception_mapper_and_retry_policy():
     assert provider._is_retryable_error(ProviderInvalidRequestError("bad request")) is False
 
 
-def test_default_retry_makes_one_attempt():
+def test_default_retry_retries_transient_errors(monkeypatch):
+    class TimeoutProvider(BaseProvider):
+        def __init__(self):
+            super().__init__(api_key="test")
+            self.calls = 0
+
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            self.calls += 1
+            if self.calls < 3:
+                raise ProviderTimeoutError("timeout")
+            return ask_ai.Response("ok")
+
+    monkeypatch.setattr("ask_ai.base.time.sleep", lambda _delay: None)
+    provider = TimeoutProvider()
+    response = provider.ask("hello")
+
+    assert response.text == "ok"
+    assert provider.calls == 3
+
+
+def test_default_retry_does_not_retry_auth_or_invalid_request_errors(monkeypatch):
+    class FailingProvider(BaseProvider):
+        def __init__(self, error):
+            super().__init__(api_key="test")
+            self.error = error
+            self.calls = 0
+
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            self.calls += 1
+            raise self.error
+
+    monkeypatch.setattr("ask_ai.base.time.sleep", lambda _delay: None)
+    for error in (
+        ProviderAuthError("unauthorized"),
+        ProviderInvalidRequestError("invalid request"),
+    ):
+        provider = FailingProvider(error)
+        with pytest.raises(type(error)):
+            provider.ask("hello")
+        assert provider.calls == 1
+
+
+def test_default_retry_applies_to_async_requests(monkeypatch):
+    class AsyncTimeoutProvider(BaseProvider):
+        def __init__(self):
+            super().__init__(api_key="test")
+            self.calls = 0
+
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        async def _send_request_async(self, messages, config, output_type=None):
+            self.calls += 1
+            if self.calls < 3:
+                raise ProviderTimeoutError("timeout")
+            return ask_ai.Response("ok")
+
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr("ask_ai.base.asyncio.sleep", no_sleep)
+    provider = AsyncTimeoutProvider()
+    response = asyncio.run(provider.ask_async("hello"))
+
+    assert response.text == "ok"
+    assert provider.calls == 3
+
+
+def test_retry_zero_explicitly_disables_default_retries(monkeypatch):
     class TimeoutProvider(BaseProvider):
         def __init__(self):
             super().__init__(api_key="test")
@@ -115,9 +198,10 @@ def test_default_retry_makes_one_attempt():
             self.calls += 1
             raise ProviderTimeoutError("timeout")
 
+    monkeypatch.setattr("ask_ai.base.time.sleep", lambda _delay: None)
     provider = TimeoutProvider()
     with pytest.raises(ProviderTimeoutError):
-        provider.ask("hello")
+        provider.ask("hello", retry=0)
 
     assert provider.calls == 1
 

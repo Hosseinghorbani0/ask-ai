@@ -8,7 +8,7 @@
 
 ### Changed
 
-- Provider SDK automatic retries are disabled to avoid retry stacking. The default `retry=0` therefore makes one request; set `retry` explicitly to enable ask-ai retries for retryable failures.
+- Provider SDK automatic retries are disabled to avoid retry stacking. The default is now `retry=2` (up to three total attempts) for retryable timeout/network, 429, and 5xx failures; non-retryable errors are not retried. Set `retry=0` to disable retries.
 
 ### Added
 

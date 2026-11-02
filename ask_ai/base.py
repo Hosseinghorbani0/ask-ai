@@ -14,6 +14,7 @@ from .media import AudioObject, ImageObject
 from .observability import Observability, ResponseMetadata, Usage
 
 logger = logging.getLogger("ask_ai")
+DEFAULT_RETRY_COUNT = 2
 
 
 class Response:
@@ -356,7 +357,9 @@ class BaseProvider:
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
         output_type = kwargs.get('output_type')
-        retry = int(kwargs.get('retry', final_config.extra.get('retry', 0)) or 0)
+        retry = int(
+            kwargs.get("retry", final_config.extra.get("retry", DEFAULT_RETRY_COUNT)) or 0
+        )
         response_model = kwargs.get('response_model')
         validation_retries = int(kwargs.get("validation_retries", 0) or 0)
 
@@ -467,7 +470,9 @@ class BaseProvider:
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
         output_type = kwargs.get('output_type')
-        retry = int(kwargs.get('retry', final_config.extra.get('retry', 0)) or 0)
+        retry = int(
+            kwargs.get("retry", final_config.extra.get("retry", DEFAULT_RETRY_COUNT)) or 0
+        )
         response_model = kwargs.get('response_model')
         validation_retries = int(kwargs.get("validation_retries", 0) or 0)
 
