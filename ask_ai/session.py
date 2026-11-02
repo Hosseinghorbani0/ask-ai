@@ -23,7 +23,14 @@ class ConversationSession:
     def clear(self) -> None:
         self.messages.clear()
 
+    def _validate_options(self, kwargs: dict[str, Any]) -> None:
+        if kwargs.get("response_model") is not None:
+            raise NotImplementedError(
+                "ConversationSession does not support response_model validation yet."
+            )
+
     def ask(self, query: str, **kwargs: Any):
+        self._validate_options(kwargs)
         started_at = time.perf_counter()
         config = self.provider._build_final_config(kwargs)
         messages = [*self.messages, {"role": "user", "content": query}]
@@ -46,6 +53,7 @@ class ConversationSession:
         return response
 
     async def ask_async(self, query: str, **kwargs: Any):
+        self._validate_options(kwargs)
         started_at = time.perf_counter()
         config = self.provider._build_final_config(kwargs)
         messages = [*self.messages, {"role": "user", "content": query}]
@@ -68,6 +76,7 @@ class ConversationSession:
         return response
 
     def ask_stream(self, query: str, **kwargs: Any) -> Iterator[str]:
+        self._validate_options(kwargs)
         started_at = time.perf_counter()
         config = self.provider._build_final_config(kwargs)
         messages = [*self.messages, {"role": "user", "content": query}]
@@ -86,6 +95,7 @@ class ConversationSession:
         self._trim()
 
     async def ask_stream_async(self, query: str, **kwargs: Any) -> AsyncIterator[str]:
+        self._validate_options(kwargs)
         started_at = time.perf_counter()
         config = self.provider._build_final_config(kwargs)
         messages = [*self.messages, {"role": "user", "content": query}]
