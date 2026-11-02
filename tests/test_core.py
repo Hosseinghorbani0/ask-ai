@@ -10,6 +10,7 @@ from ask_ai import AdvancedConfig, Azure, OpenAI
 from ask_ai.base import BaseProvider
 from ask_ai.exceptions import (
     ProviderAuthError,
+    ProviderConnectionError,
     ProviderInvalidRequestError,
     ProviderRateLimitError,
     ProviderTimeoutError,
@@ -69,9 +70,11 @@ def test_all_package_modules_and_providers_import():
 
 
 def test_release_version_and_requirements_are_aligned():
-    assert ask_ai.__version__ == "0.5.0"
+    assert ask_ai.__version__ == "0.6.0rc1"
+    pyproject = open("pyproject.toml", encoding="utf-8").read()
+    assert f'version = "{ask_ai.__version__}"' in pyproject
     requirements = open("ask_ai/requirements.txt", encoding="utf-8").read()
-    for package in ("openai", "anthropic", "google-generativeai", "groq", "Pillow", "httpx"):
+    for package in ("openai", "anthropic>=1.0.0", "google-genai", "groq", "Pillow", "httpx"):
         assert package in requirements
 
 
@@ -93,10 +96,303 @@ def test_provider_exception_mapper_and_retry_policy():
     assert isinstance(map_provider_exception(TimeoutError("timed out"), "Test"), ProviderTimeoutError)
     assert isinstance(map_provider_exception(ErrorWithStatus(422), "Test"), ProviderInvalidRequestError)
     assert isinstance(map_provider_exception(ErrorWithStatus(503), "Test"), ProviderUnavailableError)
+    assert isinstance(
+        map_provider_exception(type("APIConnectionError", (Exception,), {})("Connection error."), "Test"),
+        ProviderConnectionError,
+    )
 
     provider = object.__new__(BaseProvider)
     assert provider._is_retryable_error(ProviderRateLimitError("rate limited")) is True
     assert provider._is_retryable_error(ProviderInvalidRequestError("bad request")) is False
+
+
+def test_default_retry_retries_transient_errors(monkeypatch):
+    class TimeoutProvider(BaseProvider):
+        def __init__(self):
+            super().__init__(api_key="test")
+            self.calls = 0
+
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            self.calls += 1
+            if self.calls < 3:
+                raise ProviderTimeoutError("timeout")
+            return ask_ai.Response("ok")
+
+    monkeypatch.setattr("ask_ai.base.time.sleep", lambda _delay: None)
+    provider = TimeoutProvider()
+    response = provider.ask("hello")
+
+    assert response.text == "ok"
+    assert provider.calls == 3
+
+
+def test_default_retry_does_not_retry_auth_or_invalid_request_errors(monkeypatch):
+    class FailingProvider(BaseProvider):
+        def __init__(self, error):
+            super().__init__(api_key="test")
+            self.error = error
+            self.calls = 0
+
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            self.calls += 1
+            raise self.error
+
+    monkeypatch.setattr("ask_ai.base.time.sleep", lambda _delay: None)
+    for error in (
+        ProviderAuthError("unauthorized"),
+        ProviderInvalidRequestError("invalid request"),
+    ):
+        provider = FailingProvider(error)
+        with pytest.raises(type(error)):
+            provider.ask("hello")
+        assert provider.calls == 1
+
+
+def test_default_retry_applies_to_async_requests(monkeypatch):
+    class AsyncTimeoutProvider(BaseProvider):
+        def __init__(self):
+            super().__init__(api_key="test")
+            self.calls = 0
+
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        async def _send_request_async(self, messages, config, output_type=None):
+            self.calls += 1
+            if self.calls < 3:
+                raise ProviderTimeoutError("timeout")
+            return ask_ai.Response("ok")
+
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr("ask_ai.base.asyncio.sleep", no_sleep)
+    provider = AsyncTimeoutProvider()
+    response = asyncio.run(provider.ask_async("hello"))
+
+    assert response.text == "ok"
+    assert provider.calls == 3
+
+
+def test_retry_zero_explicitly_disables_default_retries(monkeypatch):
+    class TimeoutProvider(BaseProvider):
+        def __init__(self):
+            super().__init__(api_key="test")
+            self.calls = 0
+
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            self.calls += 1
+            raise ProviderTimeoutError("timeout")
+
+    monkeypatch.setattr("ask_ai.base.time.sleep", lambda _delay: None)
+    provider = TimeoutProvider()
+    with pytest.raises(ProviderTimeoutError):
+        provider.ask("hello", retry=0)
+
+    assert provider.calls == 1
+
+
+def test_openrouter_async_stream_retries_connection_before_first_chunk(monkeypatch):
+    class APIConnectionError(Exception):
+        pass
+
+    class AsyncStream:
+        def __init__(self):
+            self.chunks = iter(
+                [
+                    type(
+                        "Chunk",
+                        (),
+                        {
+                            "choices": [
+                                type(
+                                    "Choice",
+                                    (),
+                                    {
+                                        "delta": type(
+                                            "Delta", (), {"content": "ready"}
+                                        )()
+                                    },
+                                )()
+                            ]
+                        },
+                    )()
+                ]
+            )
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self.chunks)
+            except StopIteration:
+                raise StopAsyncIteration
+
+    class Completions:
+        def __init__(self):
+            self.calls = 0
+            self.fail_always = False
+
+        async def create(self, **kwargs):
+            self.calls += 1
+            if self.fail_always or self.calls == 1:
+                raise APIConnectionError("Connection error.")
+            return AsyncStream()
+
+    completions = Completions()
+    provider = object.__new__(OpenRouterProvider)
+    provider.model = "openai/gpt-4o"
+    provider.persona = None
+    provider.config = AdvancedConfig()
+    provider.strict_options = False
+    provider._async_client = type(
+        "Client",
+        (),
+        {"chat": type("Chat", (), {"completions": completions})()},
+    )()
+
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr("ask_ai.base.asyncio.sleep", no_sleep)
+
+    async def collect():
+        return [chunk async for chunk in provider.ask_stream_async("hello")]
+
+    assert asyncio.run(collect()) == ["ready"]
+    assert completions.calls == 2
+    assert provider._retry_count == 1
+
+    completions.fail_always = True
+
+    async def collect_without_retry():
+        with pytest.raises(
+            ProviderConnectionError,
+            match="OpenRouter streaming failed: Connection error",
+        ):
+            async for _chunk in provider.ask_stream_async("hello", retry=0):
+                pass
+
+    asyncio.run(collect_without_retry())
+    assert completions.calls == 3
+
+
+def test_sync_stream_retries_before_first_chunk(monkeypatch):
+    class FlakyStreamProvider(BaseProvider):
+        def __init__(self):
+            super().__init__(api_key="test")
+            self.calls = 0
+
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request_stream(self, messages, config):
+            self.calls += 1
+            if self.calls == 1:
+                raise ProviderConnectionError("connection error")
+            yield "ready"
+
+    monkeypatch.setattr("ask_ai.base.time.sleep", lambda _delay: None)
+    provider = FlakyStreamProvider()
+
+    assert list(provider.ask_stream("hello")) == ["ready"]
+    assert provider.calls == 2
+
+
+def test_async_stream_does_not_retry_after_first_chunk(monkeypatch):
+    class FailingStreamProvider(BaseProvider):
+        def __init__(self):
+            super().__init__(api_key="test")
+            self.calls = 0
+
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        async def _send_request_stream_async(self, messages, config):
+            self.calls += 1
+            yield "first"
+            raise ProviderConnectionError("connection dropped")
+
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr("ask_ai.base.asyncio.sleep", no_sleep)
+    provider = FailingStreamProvider()
+
+    async def collect():
+        chunks = []
+        with pytest.raises(ProviderConnectionError):
+            async for chunk in provider.ask_stream_async("hello"):
+                chunks.append(chunk)
+        return chunks
+
+    assert asyncio.run(collect()) == ["first"]
+    assert provider.calls == 1
+
+
+def test_async_stream_events_retry_before_first_event(monkeypatch):
+    class EventsProvider(BaseProvider):
+        def __init__(self):
+            super().__init__(api_key="test")
+            self.calls = 0
+
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        async def _send_request_stream_events_async(self, messages, config):
+            self.calls += 1
+            if self.calls == 1:
+                raise ProviderConnectionError("connection error")
+            yield ask_ai.TextDelta(text="ready", index=0)
+
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr("ask_ai.base.asyncio.sleep", no_sleep)
+    provider = EventsProvider()
+
+    async def collect():
+        return [
+            event
+            async for event in provider.ask_stream_events_async("hello")
+        ]
+
+    events = asyncio.run(collect())
+    assert provider.calls == 2
+    assert isinstance(events[0], ask_ai.TextDelta)
+    assert events[0].text == "ready"
+    assert isinstance(events[-1], ask_ai.Completed)
 
 
 def test_provider_request_timeout_is_forwarded():
@@ -110,6 +406,135 @@ def test_provider_request_timeout_is_forwarded():
     )
 
     assert kwargs["timeout"] == 7.0
+
+
+@pytest.mark.parametrize(
+    ("option", "source", "expected"),
+    [
+        ("clean", "```json\n{\"ok\": true}\n```", "{\"ok\": true}"),
+        ("strip", "<think>reasoning</think>answer", "answer"),
+        ("code", "Example:\n```python\nprint('ok')\n```", "print('ok')"),
+    ],
+)
+def test_text_formatting_options_work_through_public_ask(option, source, expected):
+    class FormattingProvider(BaseProvider):
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            from ask_ai import Response
+            return Response(text=source)
+
+    response = FormattingProvider(api_key="test").ask("format", **{option: True})
+
+    assert response.text == expected
+    assert response.raw == source
+
+
+@pytest.mark.parametrize(
+    ("option", "source", "expected"),
+    [
+        ("clean", "```json\n{\"ok\": true}\n```", "{\"ok\": true}"),
+        ("strip", "<think>reasoning</think>answer", "answer"),
+        ("code", "Example:\n```python\nprint('ok')\n```", "print('ok')"),
+    ],
+)
+def test_text_formatting_options_work_through_public_ask_async(option, source, expected):
+    class FormattingProvider(BaseProvider):
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            from ask_ai import Response
+            return Response(text=source)
+
+    response = asyncio.run(
+        FormattingProvider(api_key="test").ask_async("format", **{option: True})
+    )
+
+    assert response.text == expected
+    assert response.raw == source
+
+
+def test_provider_sdk_clients_disable_internal_retries(monkeypatch):
+    from types import SimpleNamespace
+
+    from ask_ai.providers import anthropic_provider, groq_provider, openai_provider
+
+    clients = []
+
+    def fake_client(*args, **kwargs):
+        clients.append(kwargs)
+        return object()
+
+    monkeypatch.setattr(openai_provider, "openai", SimpleNamespace(
+        OpenAI=fake_client,
+        AsyncOpenAI=fake_client,
+    ))
+    monkeypatch.setattr(anthropic_provider, "anthropic", SimpleNamespace(
+        Anthropic=fake_client,
+        AsyncAnthropic=fake_client,
+    ))
+    monkeypatch.setattr(groq_provider, "Groq", fake_client)
+    monkeypatch.setattr(groq_provider, "AsyncGroq", fake_client)
+
+    OpenAI(api_key="test")
+    openai_async = OpenAI(api_key="test")
+    _ = openai_async.async_client
+    anthropic = ask_ai.Anthropic(api_key="test")
+    _ = anthropic.async_client
+    groq = ask_ai.Groq(api_key="test")
+    _ = groq.async_client
+
+    assert len(clients) == 7
+    assert all(client["max_retries"] == 0 for client in clients)
+
+
+def test_azure_and_openrouter_sdk_clients_disable_internal_retries(monkeypatch):
+    from ask_ai.providers import openrouter_provider
+
+    clients = []
+
+    def fake_client(*args, **kwargs):
+        clients.append(kwargs)
+        return object()
+
+    monkeypatch.setattr(openrouter_provider.openai, "OpenAI", fake_client)
+    monkeypatch.setattr(openrouter_provider.openai, "AsyncOpenAI", fake_client)
+    monkeypatch.setattr(openrouter_provider.openai, "AzureOpenAI", fake_client)
+    monkeypatch.setattr(openrouter_provider.openai, "AsyncAzureOpenAI", fake_client)
+
+    azure = Azure(
+        api_key="test",
+        endpoint="https://example.test",
+        deployment_name="deployment",
+    )
+    _ = azure.async_client
+    router = ask_ai.OpenRouter(api_key="test")
+    _ = router.async_client
+
+    assert len(clients) == 4
+    assert all(client["max_retries"] == 0 for client in clients)
+
+
+def test_groq_uses_max_completion_tokens():
+    from ask_ai import Groq
+
+    provider = object.__new__(Groq)
+    provider.model = "test-model"
+    kwargs = provider._build_chat_kwargs(
+        [{"role": "user", "content": "hello"}],
+        AdvancedConfig(max_tokens=42),
+    )
+
+    assert kwargs["max_completion_tokens"] == 42
+    assert "max_tokens" not in kwargs
 
 
 def test_streaming_fallback_stops_after_first_provider_emits():

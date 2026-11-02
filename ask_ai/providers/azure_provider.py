@@ -5,16 +5,21 @@ try:
 except ImportError:
     openai = None
 
-from ..config import AdvancedConfig
+from ..config import CONFIG_OPTION_NAMES, AdvancedConfig
 from ..exceptions import APIKeyError, ProviderError
 from .openai_provider import OpenAIProvider
 
 
 class AzureProvider(OpenAIProvider):
+    provider_name = "Azure OpenAI"
+
     """Azure OpenAI provider. Inherits all functionality from OpenAIProvider."""
 
     def __init__(self, api_key: str = None, model: str = None, endpoint: str = None,
-                 api_version: str = None, deployment_name: str = None, **kwargs):
+                 api_version: str = None, deployment_name: str = None,
+                 strict_options: bool = False, **kwargs):
+        self.strict_options = strict_options
+        self._validate_option_names(kwargs, CONFIG_OPTION_NAMES | self.option_names, strict_options)
 
         if openai is None:
             raise ProviderError("OpenAI client library not installed. Run: pip install openai")
@@ -35,6 +40,7 @@ class AzureProvider(OpenAIProvider):
             api_version=self.api_version,
             azure_endpoint=self.endpoint,
             timeout=kwargs.get("timeout", 30.0),
+            max_retries=0,
         )
         self._async_client = None
 
@@ -57,6 +63,7 @@ class AzureProvider(OpenAIProvider):
                 api_version=self.api_version,
                 azure_endpoint=self.endpoint,
                 timeout=self.config.extra.get("timeout", 30.0),
+                max_retries=0,
             )
         return self._async_client
 

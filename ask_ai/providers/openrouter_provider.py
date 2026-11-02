@@ -8,12 +8,14 @@ except ImportError:
 
 from ..base import Response
 from ..capabilities import Capabilities
-from ..config import AdvancedConfig
+from ..config import CONFIG_OPTION_NAMES, AdvancedConfig, validate_option_names
 from ..exceptions import APIKeyError, ProviderError, map_provider_exception
 from .openai_provider import OpenAIProvider
 
 
 class OpenRouterProvider(OpenAIProvider):
+    provider_name = "OpenRouter"
+
     def capabilities(self) -> Capabilities:
         return Capabilities(
             streaming=True,
@@ -23,7 +25,9 @@ class OpenRouterProvider(OpenAIProvider):
         )
     """OpenRouter provider â€” routes to multiple models via OpenAI-compatible API."""
 
-    def __init__(self, api_key: str = None, model: str = None, **kwargs):
+    def __init__(self, api_key: str = None, model: str = None, strict_options: bool = False, **kwargs):
+        self.strict_options = strict_options
+        validate_option_names(kwargs, CONFIG_OPTION_NAMES | self.option_names, strict_options)
         if openai is None:
             raise ProviderError("OpenAI client library not installed. Run: pip install openai")
 
@@ -35,6 +39,8 @@ class OpenRouterProvider(OpenAIProvider):
         self.client = openai.OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=self.api_key,
+            timeout=kwargs.get("timeout", 30.0),
+            max_retries=0,
         )
         self._async_client = None
 
@@ -49,6 +55,8 @@ class OpenRouterProvider(OpenAIProvider):
             self._async_client = openai.AsyncOpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=self.api_key,
+                timeout=self.config.extra.get("timeout", 30.0),
+                max_retries=0,
             )
         return self._async_client
 

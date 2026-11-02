@@ -9,6 +9,37 @@ class Usage:
     total_tokens: Optional[int] = None
 
 
+def usage_from_fields(
+    source: Any,
+    input_field: str,
+    output_field: str,
+    total_field: Optional[str] = None,
+) -> Optional[Usage]:
+    """Normalize provider-specific token usage fields without inventing missing counts."""
+    if source is None:
+        return None
+
+    def field(name: Optional[str]) -> Optional[int]:
+        if name is None:
+            return None
+        if isinstance(source, dict):
+            return source.get(name)
+        return getattr(source, name, None)
+
+    input_tokens = field(input_field)
+    output_tokens = field(output_field)
+    total_tokens = field(total_field)
+    if input_tokens is None and output_tokens is None and total_tokens is None:
+        return None
+    if total_tokens is None and input_tokens is not None and output_tokens is not None:
+        total_tokens = input_tokens + output_tokens
+    return Usage(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=total_tokens,
+    )
+
+
 @dataclass(frozen=True)
 class ResponseMetadata:
     provider: str

@@ -2,15 +2,21 @@ import time
 from collections.abc import AsyncIterator, Iterator
 from typing import Any, Optional
 
-from .base import Response
+from .base import DEFAULT_RETRY_COUNT, Response
 
 
 class ConversationSession:
     """In-memory conversation state backed by an existing provider."""
 
-    def __init__(self, provider: Any, max_messages: Optional[int] = None):
+    def __init__(
+        self,
+        provider: Any,
+        max_messages: Optional[int] = None,
+        strict_options: bool = False,
+    ):
         self.provider = provider
         self.max_messages = max_messages
+        self.strict_options = strict_options
         self.messages: list[dict[str, str]] = []
 
     def _trim(self) -> None:
@@ -28,6 +34,8 @@ class ConversationSession:
             raise NotImplementedError(
                 "ConversationSession does not support response_model validation yet."
             )
+        if self.strict_options and "strict_options" not in kwargs:
+            kwargs["strict_options"] = True
 
     def ask(self, query: str, **kwargs: Any):
         self._validate_options(kwargs)
@@ -39,7 +47,10 @@ class ConversationSession:
             messages,
             config,
             kwargs.get("output_type"),
-            int(kwargs.get("retry", config.extra.get("retry", 0)) or 0),
+            int(
+                kwargs.get("retry", config.extra.get("retry", DEFAULT_RETRY_COUNT))
+                or 0
+            ),
         )
         response = self.provider._attach_metadata(
             response,
@@ -62,7 +73,10 @@ class ConversationSession:
             messages,
             config,
             kwargs.get("output_type"),
-            int(kwargs.get("retry", config.extra.get("retry", 0)) or 0),
+            int(
+                kwargs.get("retry", config.extra.get("retry", DEFAULT_RETRY_COUNT))
+                or 0
+            ),
         )
         response = self.provider._attach_metadata(
             response,

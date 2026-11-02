@@ -2,7 +2,7 @@
 ask-ai: A minimal Python SDK to switch between LLM providers in one line.
 """
 
-__version__ = "0.5.0"
+__version__ = "0.6.0rc1"
 
 from .base import Response
 from .capabilities import Capabilities
@@ -17,6 +17,7 @@ from .exceptions import (
     MediaSecurityError,
     MediaTypeNotSupportedError,
     ProviderAuthError,
+    ProviderConnectionError,
     ProviderError,
     ProviderInvalidRequestError,
     ProviderRateLimitError,
@@ -54,6 +55,7 @@ __all__ = [
     "AskAIParsingError",
     "ProviderError",
     "ProviderAuthError",
+    "ProviderConnectionError",
     "ProviderRateLimitError",
     "ProviderTimeoutError",
     "ProviderInvalidRequestError",

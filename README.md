@@ -25,7 +25,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/askai-python.svg)](https://pypi.org/project/askai-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 
 
@@ -36,6 +36,9 @@
 ```bash
 pip install askai-python
 ```
+
+The Google provider uses the `google-genai` SDK. Install its optional dependency
+with `pip install "askai-python[google]"`. Python 3.10 or newer is required.
 
 ```python
 from ask_ai import OpenAI, Groq
@@ -112,6 +115,12 @@ ai = OpenAI()
 response = ai.ask("Write a script", retry=3, timeout=10)
 ```
 
+Requests default to `retry=2` (up to three attempts) for retryable timeout,
+connection, rate-limit (`429`), and server (`5xx`) errors. Authentication and
+invalid-request errors are not retried; use `retry=0` to disable retries.
+Streaming retries occur only before the first chunk/event, so already-emitted
+output is never duplicated.
+
 ### System Configuration 
 Set system prompts and temperature directly:
 
@@ -123,6 +132,11 @@ ai.advanced(
 
 print(ai.ask("How do I optimize a Dockerfile?").text)
 ```
+
+Unknown option names produce a `UserWarning` with a spelling suggestion. Pass
+`strict_options=True` to a provider (or to an individual request) to raise a
+`ValueError` instead. `safe_mode` currently has no defined behavior and is
+deprecated; passing it emits a `DeprecationWarning`.
 
 ---
 
@@ -245,6 +259,24 @@ print(response.raw)
 print(response.parsed.name)
 ```
 
+For supported schemas, `response_model` also requests native JSON Schema output
+from OpenAI/Azure, Anthropic, Groq, Google, and OpenRouter. When an adapter
+receives a clear unsupported-schema response (HTTP 400/422), it retries once
+without the native schema and keeps local validation enabled. Authentication,
+rate-limit, and server errors are propagated, not retried as prompt-only
+fallbacks. Schemas that cannot be represented in the provider's strict schema
+format use prompt instructions and local validation directly. Provider/model
+support varies; these request parameters have mock-based tests but have not
+been verified against live APIs.
+
+Provider parameters follow their documented APIs:
+[OpenAI Chat Completions](https://developers.openai.com/api/docs/guides/structured-outputs),
+[Azure OpenAI](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/structured-outputs),
+[Anthropic](https://platform.claude.com/docs/en/build-with-claude/structured-outputs),
+[Groq](https://console.groq.com/docs/structured-outputs),
+[Google GenAI](https://ai.google.dev/gemini-api/docs/structured-output), and
+[OpenRouter Chat Completions](https://openrouter.ai/docs/guides/features/structured-outputs).
+
 ### Streaming Events
 
 Use typed events for text, completion, and errors while keeping the legacy
@@ -260,12 +292,21 @@ for event in OpenAI().ask_stream_events("Tell me a story"):
         print("\nDone")
 ```
 
+`UsageUpdate` events are emitted when an adapter receives usage in its stream.
+`ToolCall` is a reserved event type and is not emitted by the current adapters.
+Streaming usage extraction is mock-tested and has not been verified against
+live provider APIs.
+
 ### 📊 Observability
 
-Attach optional middleware to receive provider, model, latency, and retry
-metadata. Provider usage extraction and failure-reason reporting are not
-supported yet. Estimated cost is only calculated when a response already
-contains usage data; the bundled provider adapters do not currently supply it:
+Attach optional middleware to receive provider, model, latency, retry, and
+provider-reported token usage. Usage field names are normalized to
+`input_tokens`, `output_tokens`, and `total_tokens`. Estimated cost is only
+calculated when usage is available and pricing for the model is supplied;
+missing usage never produces a cost estimate. Mock tests cover usage extraction
+for supported adapters; live provider APIs have not been verified. On failures,
+middleware emits a `failed` event with `failure_reason`, then the exception is
+propagated:
 
 ```python
 from ask_ai import Observability, OpenAI
@@ -273,6 +314,7 @@ from ask_ai import Observability, OpenAI
 ai = OpenAI().use(Observability(on_event=print))
 response = ai.ask("Explain tracing")
 print(response.metadata.latency_ms)
+print(response.metadata.usage)
 ```
 
 ### Provider Capabilities
@@ -286,6 +328,9 @@ capabilities = OpenAI().capabilities()
 if capabilities.structured_output:
     print("Structured output is available")
 ```
+
+Capabilities are advisory provider-level metadata, not guarantees for every
+model.
 
 ### Smart Router
 

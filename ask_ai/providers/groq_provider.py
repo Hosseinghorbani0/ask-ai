@@ -10,7 +10,15 @@ except ImportError:
 from ..base import BaseProvider, Response
 from ..capabilities import Capabilities
 from ..config import AdvancedConfig
+from ..events import TextDelta, UsageUpdate
 from ..exceptions import APIKeyError, MediaTypeNotSupportedError, ProviderError, map_provider_exception
+from ..observability import usage_from_fields
+from ..structured import (
+    call_with_schema_fallback,
+    call_with_schema_fallback_async,
+    strict_json_schema,
+    structured_output_name,
+)
 
 logger = logging.getLogger("ask_ai")
 
@@ -27,7 +35,11 @@ class GroqProvider(BaseProvider):
         if Groq is None:
             raise ProviderError("Groq client library not installed. Run: pip install groq")
 
-        self.client = Groq(api_key=self.api_key, timeout=self.config.extra.get("timeout", 30.0))
+        self.client = Groq(
+            api_key=self.api_key,
+            timeout=self.config.extra.get("timeout", 30.0),
+            max_retries=0,
+        )
         self._async_client = None
 
     @property
@@ -37,6 +49,7 @@ class GroqProvider(BaseProvider):
             self._async_client = AsyncGroq(
                 api_key=self.api_key,
                 timeout=self.config.extra.get("timeout", 30.0),
+                max_retries=0,
             )
         return self._async_client
 
@@ -58,7 +71,7 @@ class GroqProvider(BaseProvider):
             "model": self.model,
             "messages": messages,
             "temperature": config.temperature,
-            "max_tokens": config.max_tokens,
+            "max_completion_tokens": config.max_tokens,
             "top_p": config.top_p,
             "frequency_penalty": config.frequency_penalty,
             "presence_penalty": config.presence_penalty,
@@ -66,6 +79,18 @@ class GroqProvider(BaseProvider):
         }
         if config.stop:
             kwargs["stop"] = config.stop
+
+        response_model = config.extra.get("response_model")
+        schema = strict_json_schema(response_model) if response_model is not None else None
+        if schema is not None:
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": structured_output_name(response_model),
+                    "strict": True,
+                    "schema": schema,
+                },
+            }
 
         return {k: v for k, v in kwargs.items() if v is not None}
 
@@ -77,8 +102,25 @@ class GroqProvider(BaseProvider):
 
         try:
             kwargs = self._build_chat_kwargs(messages, config)
-            response = self.client.chat.completions.create(**kwargs)
-            return Response(text=response.choices[0].message.content or "")
+            fallback_kwargs = dict(kwargs)
+            if "response_format" in kwargs:
+                fallback_kwargs.pop("response_format")
+                response = call_with_schema_fallback(
+                    self.client.chat.completions.create,
+                    kwargs,
+                    fallback_kwargs,
+                )
+            else:
+                response = self.client.chat.completions.create(**kwargs)
+            return Response(
+                text=response.choices[0].message.content or "",
+                usage=usage_from_fields(
+                    getattr(response, "usage", None),
+                    "prompt_tokens",
+                    "completion_tokens",
+                    "total_tokens",
+                ),
+            )
         except Exception as e:
             raise map_provider_exception(e, "Groq", "API") from e
 
@@ -95,6 +137,28 @@ class GroqProvider(BaseProvider):
         except Exception as e:
             raise map_provider_exception(e, "Groq", "streaming") from e
 
+    def _send_request_stream_events(self, messages, config):
+        try:
+            kwargs = self._build_chat_kwargs(messages, config)
+            kwargs["stream"] = True
+            kwargs["stream_options"] = {"include_usage": True}
+            stream = self.client.chat.completions.create(**kwargs)
+            index = 0
+            for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield TextDelta(text=chunk.choices[0].delta.content, index=index)
+                    index += 1
+                usage = usage_from_fields(
+                    getattr(chunk, "usage", None),
+                    "prompt_tokens",
+                    "completion_tokens",
+                    "total_tokens",
+                )
+                if usage is not None:
+                    yield UsageUpdate(**usage.__dict__)
+        except Exception as e:
+            raise map_provider_exception(e, "Groq", "streaming") from e
+
     # ─── Async ─────────────────────────────────────────────
 
     async def _send_request_async(self, messages: list[dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
@@ -103,8 +167,25 @@ class GroqProvider(BaseProvider):
 
         try:
             kwargs = self._build_chat_kwargs(messages, config)
-            response = await self.async_client.chat.completions.create(**kwargs)
-            return Response(text=response.choices[0].message.content or "")
+            fallback_kwargs = dict(kwargs)
+            if "response_format" in kwargs:
+                fallback_kwargs.pop("response_format")
+                response = await call_with_schema_fallback_async(
+                    self.async_client.chat.completions.create,
+                    kwargs,
+                    fallback_kwargs,
+                )
+            else:
+                response = await self.async_client.chat.completions.create(**kwargs)
+            return Response(
+                text=response.choices[0].message.content or "",
+                usage=usage_from_fields(
+                    getattr(response, "usage", None),
+                    "prompt_tokens",
+                    "completion_tokens",
+                    "total_tokens",
+                ),
+            )
         except Exception as e:
             raise map_provider_exception(e, "Groq", "API") from e
 
@@ -118,5 +199,27 @@ class GroqProvider(BaseProvider):
             async for chunk in stream:
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
+        except Exception as e:
+            raise map_provider_exception(e, "Groq", "streaming") from e
+
+    async def _send_request_stream_events_async(self, messages, config):
+        try:
+            kwargs = self._build_chat_kwargs(messages, config)
+            kwargs["stream"] = True
+            kwargs["stream_options"] = {"include_usage": True}
+            stream = await self.async_client.chat.completions.create(**kwargs)
+            index = 0
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield TextDelta(text=chunk.choices[0].delta.content, index=index)
+                    index += 1
+                usage = usage_from_fields(
+                    getattr(chunk, "usage", None),
+                    "prompt_tokens",
+                    "completion_tokens",
+                    "total_tokens",
+                )
+                if usage is not None:
+                    yield UsageUpdate(**usage.__dict__)
         except Exception as e:
             raise map_provider_exception(e, "Groq", "streaming") from e

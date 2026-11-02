@@ -1,6 +1,48 @@
-from typing import Any, Optional
+import difflib
+import warnings
+from typing import Any, Iterable, Optional
 
 _NOT_PROVIDED = object()
+
+CONFIG_OPTION_NAMES = frozenset(
+    {
+        "temperature",
+        "max_tokens",
+        "top_p",
+        "frequency_penalty",
+        "presence_penalty",
+        "stop",
+        "system_message",
+        "prompt",
+        "system",
+        "safe_mode",
+        "timeout",
+        "retry",
+        "response_model",
+        "validation_retries",
+        "output_type",
+        "clean",
+        "strip",
+        "code",
+        "json",
+    }
+)
+
+
+def validate_option_names(
+    options: Iterable[str],
+    allowed: Iterable[str],
+    strict: bool = False,
+) -> None:
+    allowed_set = set(allowed)
+    allowed_names = sorted(allowed_set)
+    for name in sorted(set(options) - allowed_set):
+        suggestions = difflib.get_close_matches(name, allowed_names, n=1, cutoff=0.6)
+        suggestion = f" Did you mean '{suggestions[0]}'?" if suggestions else ""
+        message = f"Unknown option '{name}'.{suggestion}"
+        if strict:
+            raise ValueError(message)
+        warnings.warn(message, UserWarning, stacklevel=3)
 
 
 class AdvancedConfig:
@@ -37,6 +79,12 @@ class AdvancedConfig:
             kwargs.pop("system", None)
 
         self.system_message = system_message
+        if safe_mode is not _NOT_PROVIDED:
+            warnings.warn(
+                "safe_mode is deprecated and has no defined behavior; it will be removed in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         self.safe_mode = False if safe_mode is _NOT_PROVIDED else safe_mode
         self._safe_mode_provided = safe_mode is not _NOT_PROVIDED
         self.extra: dict[str, Any] = kwargs

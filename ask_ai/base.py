@@ -7,13 +7,14 @@ from collections.abc import AsyncIterator, Iterator
 from typing import Any, Optional, Union
 
 from .capabilities import Capabilities
-from .config import AdvancedConfig
+from .config import CONFIG_OPTION_NAMES, AdvancedConfig, validate_option_names
 from .events import Completed, Error, TextDelta, ToolCall, UsageUpdate
 from .exceptions import StructuredValidationError
 from .media import AudioObject, ImageObject
 from .observability import Observability, ResponseMetadata, Usage
 
 logger = logging.getLogger("ask_ai")
+DEFAULT_RETRY_COUNT = 2
 
 
 class Response:
@@ -26,12 +27,14 @@ class Response:
         media: Union[ImageObject, AudioObject, None] = None,
         response_model: Any = None,
         metadata: Any = None,
+        usage: Optional[Usage] = None,
         **kwargs,
     ):
         self._raw_text = text
         self.media = media
         self.response_model = response_model
         self.metadata = metadata
+        self.usage = usage
         self._kwargs = kwargs
 
     @property
@@ -110,7 +113,18 @@ class BaseProvider:
     Abstract base class for all AI providers.
     Implements the core 'ask' logic and configuration management.
     """
-    def __init__(self, api_key: str = None, model: str = None, persona: str = None, **kwargs):
+    option_names = frozenset()
+
+    def __init__(
+        self,
+        api_key: str = None,
+        model: str = None,
+        persona: str = None,
+        strict_options: bool = False,
+        **kwargs,
+    ):
+        self.strict_options = strict_options
+        self._validate_option_names(kwargs, CONFIG_OPTION_NAMES | self.option_names, strict_options)
         # Zero-Config: Try env var if key not provided
         self.api_key = api_key or os.environ.get(self._get_api_key_env_var())
         self.model = model or self._get_default_model()
@@ -118,14 +132,33 @@ class BaseProvider:
         self.config = AdvancedConfig(**kwargs)
         self._middleware: list[Observability] = []
 
+    @staticmethod
+    def _validate_option_names(options, allowed, strict=False):
+        validate_option_names(options, allowed, strict)
+
     def use(self, middleware: Observability) -> "BaseProvider":
         """Attach optional observability middleware and return this provider."""
         self._middleware.append(middleware)
         return self
 
-    def session(self, max_messages: Optional[int] = None):
+    def session(
+        self,
+        max_messages: Optional[int] = None,
+        strict_options: Optional[bool] = None,
+        **kwargs,
+    ):
+        strict = (
+            getattr(self, "strict_options", False)
+            if strict_options is None
+            else strict_options
+        )
+        validate_option_names(kwargs, {"max_messages", "strict_options"}, strict)
         from .session import ConversationSession
-        return ConversationSession(self, max_messages=max_messages)
+        return ConversationSession(
+            self,
+            max_messages=max_messages,
+            strict_options=strict,
+        )
 
     def capabilities(self) -> Capabilities:
         """Return conservative capabilities for custom providers."""
@@ -197,6 +230,13 @@ class BaseProvider:
                 response = self._execute_with_retry(
                     self._send_request, request_messages, config, output_type, retry
                 )
+                response._kwargs.update(
+                    {
+                        option: config.extra[option]
+                        for option in ("clean", "strip", "code")
+                        if option in config.extra
+                    }
+                )
                 retry_count += getattr(self, "_retry_count", 0)
                 if response_model is None:
                     return self._attach_metadata(response, started_at, retry_count)
@@ -234,6 +274,13 @@ class BaseProvider:
                 response = await self._execute_with_retry_async(
                     self._send_request_async, request_messages, config, output_type, retry
                 )
+                response._kwargs.update(
+                    {
+                        option: config.extra[option]
+                        for option in ("clean", "strip", "code")
+                        if option in config.extra
+                    }
+                )
                 retry_count += getattr(self, "_retry_count", 0)
                 if response_model is None:
                     return self._attach_metadata(response, started_at, retry_count)
@@ -265,6 +312,8 @@ class BaseProvider:
         Update global advanced settings for this instance.
         Merges new settings with existing ones.
         """
+        strict = kwargs.pop("strict_options", self.strict_options)
+        self._validate_option_names(kwargs, CONFIG_OPTION_NAMES | self.option_names, strict)
         new_conf = AdvancedConfig(**kwargs)
         for k, v in new_conf.__dict__.items():
             if k in ('extra', '_safe_mode_provided'):
@@ -308,7 +357,9 @@ class BaseProvider:
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
         output_type = kwargs.get('output_type')
-        retry = int(kwargs.get('retry', final_config.extra.get('retry', 0)) or 0)
+        retry = int(
+            kwargs.get("retry", final_config.extra.get("retry", DEFAULT_RETRY_COUNT)) or 0
+        )
         response_model = kwargs.get('response_model')
         validation_retries = int(kwargs.get("validation_retries", 0) or 0)
 
@@ -352,7 +403,14 @@ class BaseProvider:
 
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
-        yield from self._send_request_stream(messages, final_config)
+        retry = int(
+            kwargs.get("retry", final_config.extra.get("retry", DEFAULT_RETRY_COUNT))
+            or 0
+        )
+        yield from self._iter_with_retry(
+            lambda: self._send_request_stream(messages, final_config),
+            retry,
+        )
 
     def ask_stream_events(self, query: str, **kwargs) -> Iterator[Any]:
         """Yield typed events while preserving the legacy text stream API."""
@@ -370,8 +428,15 @@ class BaseProvider:
         usage = None
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
+        retry = int(
+            kwargs.get("retry", final_config.extra.get("retry", DEFAULT_RETRY_COUNT))
+            or 0
+        )
         try:
-            for event in self._send_request_stream_events(messages, final_config):
+            for event in self._iter_with_retry(
+                lambda: self._send_request_stream_events(messages, final_config),
+                retry,
+            ):
                 if isinstance(event, TextDelta):
                     emitted_chunks += 1
                     text_parts.append(event.text)
@@ -419,7 +484,9 @@ class BaseProvider:
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
         output_type = kwargs.get('output_type')
-        retry = int(kwargs.get('retry', final_config.extra.get('retry', 0)) or 0)
+        retry = int(
+            kwargs.get("retry", final_config.extra.get("retry", DEFAULT_RETRY_COUNT)) or 0
+        )
         response_model = kwargs.get('response_model')
         validation_retries = int(kwargs.get("validation_retries", 0) or 0)
 
@@ -463,7 +530,14 @@ class BaseProvider:
 
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
-        async for chunk in self._send_request_stream_async(messages, final_config):
+        retry = int(
+            kwargs.get("retry", final_config.extra.get("retry", DEFAULT_RETRY_COUNT))
+            or 0
+        )
+        async for chunk in self._aiter_with_retry(
+            lambda: self._send_request_stream_async(messages, final_config),
+            retry,
+        ):
             yield chunk
 
     async def ask_stream_events_async(self, query: str, **kwargs) -> AsyncIterator[Any]:
@@ -483,8 +557,15 @@ class BaseProvider:
         usage = None
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
+        retry = int(
+            kwargs.get("retry", final_config.extra.get("retry", DEFAULT_RETRY_COUNT))
+            or 0
+        )
         try:
-            async for event in self._send_request_stream_events_async(messages, final_config):
+            async for event in self._aiter_with_retry(
+                lambda: self._send_request_stream_events_async(messages, final_config),
+                retry,
+            ):
                 if isinstance(event, TextDelta):
                     emitted_chunks += 1
                     text_parts.append(event.text)
@@ -504,11 +585,20 @@ class BaseProvider:
 
     def _build_final_config(self, kwargs: dict[str, Any]) -> AdvancedConfig:
         """Build final config by merging global config with per-request kwargs."""
-        request_config = AdvancedConfig(**kwargs)
+        options = dict(kwargs)
+        strict = options.pop("strict_options", getattr(self, "strict_options", False))
+        validate_option_names(
+            options,
+            CONFIG_OPTION_NAMES
+            | self.option_names
+            | {"strict_options", "providers", "fallback"},
+            strict,
+        )
+        request_config = AdvancedConfig(**options)
         final_config = self.config.merge(request_config)
 
         # Ensure timeout has a default
-        timeout = kwargs.get('timeout', final_config.extra.get('timeout', 30))
+        timeout = options.get('timeout', final_config.extra.get('timeout', 30))
         final_config.extra['timeout'] = float(timeout) if timeout is not None else 30.0
 
         return final_config
@@ -521,14 +611,10 @@ class BaseProvider:
 
         # Smart capability: if json=True or response_model is specified
         response_model = config.extra.get('response_model')
-        if response_model:
-            if hasattr(response_model, "model_json_schema"):
-                schema = response_model.model_json_schema()
-            elif hasattr(response_model, "schema"):
-                schema = response_model.schema()
-            else:
-                schema = None
+        if response_model is not None:
+            from .structured import json_schema_for_model
 
+            schema = json_schema_for_model(response_model)
             if schema:
                 import json
                 schema_str = json.dumps(schema)
@@ -554,6 +640,58 @@ class BaseProvider:
         return messages
 
     # ─── Retry Logic ────────────────────────────────────────
+
+    def _iter_with_retry(self, iterator_factory, retry: int):
+        attempts = 0
+        self._retry_count = 0
+        while True:
+            emitted = False
+            try:
+                for item in iterator_factory():
+                    emitted = True
+                    yield item
+                self._retry_count = attempts
+                return
+            except Exception as error:
+                if emitted or attempts >= retry or not self._is_retryable_error(error):
+                    raise
+                attempts += 1
+                self._retry_count = attempts
+                delay = min(2 ** attempts + random.uniform(0, 1), 30)
+                logger.warning(
+                    "Transient streaming error (%s). Retrying in %.1fs... (%d/%d)",
+                    error.__class__.__name__,
+                    delay,
+                    attempts,
+                    retry,
+                )
+                time.sleep(delay)
+
+    async def _aiter_with_retry(self, iterator_factory, retry: int):
+        attempts = 0
+        self._retry_count = 0
+        while True:
+            emitted = False
+            try:
+                async for item in iterator_factory():
+                    emitted = True
+                    yield item
+                self._retry_count = attempts
+                return
+            except Exception as error:
+                if emitted or attempts >= retry or not self._is_retryable_error(error):
+                    raise
+                attempts += 1
+                self._retry_count = attempts
+                delay = min(2 ** attempts + random.uniform(0, 1), 30)
+                logger.warning(
+                    "Transient async streaming error (%s). Retrying in %.1fs... (%d/%d)",
+                    error.__class__.__name__,
+                    delay,
+                    attempts,
+                    retry,
+                )
+                await asyncio.sleep(delay)
 
     def _execute_with_retry(self, func, messages, config, output_type, retry):
         """Execute a sync function with exponential backoff + jitter."""

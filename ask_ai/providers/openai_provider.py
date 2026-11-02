@@ -10,13 +10,23 @@ except ImportError:
 from ..base import BaseProvider, Response
 from ..capabilities import Capabilities
 from ..config import AdvancedConfig
+from ..events import TextDelta, UsageUpdate
 from ..exceptions import APIKeyError, ProviderError, map_provider_exception
 from ..media import AudioObject, ImageObject
+from ..observability import usage_from_fields
+from ..structured import (
+    call_with_schema_fallback,
+    call_with_schema_fallback_async,
+    strict_json_schema,
+    structured_output_name,
+)
 
 logger = logging.getLogger("ask_ai")
 
 
 class OpenAIProvider(BaseProvider):
+    provider_name = "OpenAI"
+
     def capabilities(self) -> Capabilities:
         return Capabilities(
             streaming=True,
@@ -36,7 +46,11 @@ class OpenAIProvider(BaseProvider):
         if openai is None:
             raise ProviderError("OpenAI client library not installed. Run: pip install openai")
 
-        self.client = openai.OpenAI(api_key=self.api_key, timeout=self.config.extra.get("timeout", 30.0))
+        self.client = openai.OpenAI(
+            api_key=self.api_key,
+            timeout=self.config.extra.get("timeout", 30.0),
+            max_retries=0,
+        )
         self._async_client = None  # Lazy-loaded
 
     @property
@@ -46,6 +60,7 @@ class OpenAIProvider(BaseProvider):
             self._async_client = openai.AsyncOpenAI(
                 api_key=self.api_key,
                 timeout=self.config.extra.get("timeout", 30.0),
+                max_retries=0,
             )
         return self._async_client
 
@@ -69,11 +84,27 @@ class OpenAIProvider(BaseProvider):
 
     def _generate_text_or_smart(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Response:
         try:
-            kwargs = self._build_chat_kwargs(messages, config, include_tools=True)
-            response = self.client.chat.completions.create(**kwargs)
-            return self._process_chat_response(response, messages, config)
+            response_model = config.extra.get("response_model")
+            native_kwargs = self._build_chat_kwargs(
+                messages, config, include_tools=response_model is None
+            )
+            fallback_kwargs = dict(native_kwargs)
+            if "response_format" in native_kwargs:
+                fallback_kwargs.pop("response_format")
+                response = call_with_schema_fallback(
+                    self.client.chat.completions.create,
+                    native_kwargs,
+                    fallback_kwargs,
+                )
+            else:
+                response = self.client.chat.completions.create(**native_kwargs)
+            result = self._process_chat_response(response, messages, config)
+            result.usage = usage_from_fields(
+                getattr(response, "usage", None), "prompt_tokens", "completion_tokens", "total_tokens"
+            )
+            return result
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "API") from e
+            raise map_provider_exception(e, self.provider_name, "API") from e
 
     def _send_request_stream(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Iterator[str]:
         """Sync streaming — yields text chunks."""
@@ -87,7 +118,29 @@ class OpenAIProvider(BaseProvider):
                     yield chunk.choices[0].delta.content
 
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "streaming") from e
+            raise map_provider_exception(e, self.provider_name, "streaming") from e
+
+    def _send_request_stream_events(self, messages, config):
+        try:
+            kwargs = self._build_chat_kwargs(messages, config, include_tools=False)
+            kwargs["stream"] = True
+            kwargs["stream_options"] = {"include_usage": True}
+            stream = self.client.chat.completions.create(**kwargs)
+            index = 0
+            for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield TextDelta(text=chunk.choices[0].delta.content, index=index)
+                    index += 1
+                usage = usage_from_fields(
+                    getattr(chunk, "usage", None),
+                    "prompt_tokens",
+                    "completion_tokens",
+                    "total_tokens",
+                )
+                if usage is not None:
+                    yield UsageUpdate(**usage.__dict__)
+        except Exception as e:
+            raise map_provider_exception(e, self.provider_name, "streaming") from e
 
     # ─── Async ─────────────────────────────────────────────
 
@@ -98,11 +151,27 @@ class OpenAIProvider(BaseProvider):
             return await self._generate_audio_async(messages, config)
 
         try:
-            kwargs = self._build_chat_kwargs(messages, config, include_tools=True)
-            response = await self.async_client.chat.completions.create(**kwargs)
-            return await self._process_chat_response_async(response, messages, config)
+            response_model = config.extra.get("response_model")
+            native_kwargs = self._build_chat_kwargs(
+                messages, config, include_tools=response_model is None
+            )
+            fallback_kwargs = dict(native_kwargs)
+            if "response_format" in native_kwargs:
+                fallback_kwargs.pop("response_format")
+                response = await call_with_schema_fallback_async(
+                    self.async_client.chat.completions.create,
+                    native_kwargs,
+                    fallback_kwargs,
+                )
+            else:
+                response = await self.async_client.chat.completions.create(**native_kwargs)
+            result = await self._process_chat_response_async(response, messages, config)
+            result.usage = usage_from_fields(
+                getattr(response, "usage", None), "prompt_tokens", "completion_tokens", "total_tokens"
+            )
+            return result
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "API") from e
+            raise map_provider_exception(e, self.provider_name, "API") from e
 
     async def _send_request_stream_async(self, messages: list[dict[str, str]], config: AdvancedConfig) -> AsyncIterator[str]:
         """Async streaming — yields text chunks."""
@@ -116,7 +185,29 @@ class OpenAIProvider(BaseProvider):
                     yield chunk.choices[0].delta.content
 
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "streaming") from e
+            raise map_provider_exception(e, self.provider_name, "streaming") from e
+
+    async def _send_request_stream_events_async(self, messages, config):
+        try:
+            kwargs = self._build_chat_kwargs(messages, config, include_tools=False)
+            kwargs["stream"] = True
+            kwargs["stream_options"] = {"include_usage": True}
+            stream = await self.async_client.chat.completions.create(**kwargs)
+            index = 0
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield TextDelta(text=chunk.choices[0].delta.content, index=index)
+                    index += 1
+                usage = usage_from_fields(
+                    getattr(chunk, "usage", None),
+                    "prompt_tokens",
+                    "completion_tokens",
+                    "total_tokens",
+                )
+                if usage is not None:
+                    yield UsageUpdate(**usage.__dict__)
+        except Exception as e:
+            raise map_provider_exception(e, self.provider_name, "streaming") from e
 
     # ─── Helpers ───────────────────────────────────────────
 
@@ -140,6 +231,18 @@ class OpenAIProvider(BaseProvider):
             if tools:
                 kwargs["tools"] = tools
                 kwargs["tool_choice"] = "auto"
+
+        response_model = config.extra.get("response_model")
+        schema = strict_json_schema(response_model) if response_model is not None else None
+        if schema is not None:
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": structured_output_name(response_model),
+                    "strict": True,
+                    "schema": schema,
+                },
+            }
 
         # Filter None values
         return {k: v for k, v in kwargs.items() if v is not None}
@@ -211,7 +314,7 @@ class OpenAIProvider(BaseProvider):
                 media=ImageObject(img_data)
             )
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "image generation") from e
+            raise map_provider_exception(e, self.provider_name, "image generation") from e
 
     async def _generate_image_async(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Response:
         prompt = messages[-1]["content"]
@@ -231,7 +334,7 @@ class OpenAIProvider(BaseProvider):
                 media=ImageObject(img_data)
             )
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "image generation") from e
+            raise map_provider_exception(e, self.provider_name, "image generation") from e
 
     # ─── Audio Generation ──────────────────────────────────
 
@@ -249,7 +352,7 @@ class OpenAIProvider(BaseProvider):
                 media=AudioObject(response.content)
             )
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "audio generation") from e
+            raise map_provider_exception(e, self.provider_name, "audio generation") from e
 
     async def _generate_audio_async(self, messages: list[dict[str, str]], config: AdvancedConfig) -> Response:
         text = messages[-1]["content"]
@@ -265,7 +368,7 @@ class OpenAIProvider(BaseProvider):
                 media=AudioObject(response.content)
             )
         except Exception as e:
-            raise map_provider_exception(e, "OpenAI", "audio generation") from e
+            raise map_provider_exception(e, self.provider_name, "audio generation") from e
 
 
 # ─── Download Helpers ──────────────────────────────────────
