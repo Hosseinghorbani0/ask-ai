@@ -291,12 +291,17 @@ Route requests across providers using deterministic `cheapest`, `fastest`, or
 `most_reliable` policies. Supply static `profiles` for meaningful ordering:
 
 ```python
-from ask_ai import Router
+from ask_ai import Groq, OpenAI, Router
 
+openai = OpenAI()  # Requires OPENAI_API_KEY
+groq = Groq()  # Requires GROQ_API_KEY
 router = Router(
     [openai, groq],
     policy="fastest",
-    profiles={"OpenAI": {"latency_ms": 100}, "Groq": {"latency_ms": 50}},
+    profiles={
+        "OpenAIProvider": {"latency_ms": 100},
+        "GroqProvider": {"latency_ms": 50},
+    },
 )
 response = router.ask("Explain routing")
 ```
