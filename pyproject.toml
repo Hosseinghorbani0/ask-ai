@@ -64,6 +64,7 @@ exclude = ["assets*", "docs*", "tests*", ".gemini*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.txt", "*.md"]
+"ask_ai" = ["py.typed"]
 
 # ─── Ruff (Linter + Formatter) ─────────────────────────────
 
