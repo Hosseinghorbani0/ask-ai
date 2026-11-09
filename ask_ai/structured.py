@@ -1,3 +1,4 @@
+import enum
 import json
 import types
 import typing
@@ -16,6 +17,17 @@ def _schema_for_type(annotation: Any) -> dict[str, Any]:
     origin = get_origin(annotation)
     args = get_args(annotation)
 
+    if isinstance(annotation, type) and issubclass(annotation, enum.Enum):
+        values = [member.value for member in annotation]
+        value_type = type(values[0]) if values else str
+        json_type = {
+            str: "string",
+            bool: "boolean",
+            int: "integer",
+            float: "number",
+        }.get(value_type)
+        if json_type is not None:
+            return {"type": json_type, "enum": values}
     if origin in (typing.Union, types.UnionType):
         return {"anyOf": [_schema_for_type(option) for option in args]}
     if origin is Literal:
@@ -233,26 +245,122 @@ def _validate_dataclass(model_class: type[Any], data: Any) -> Any:
     values = {}
     for field in fields(model_class):
         if field.name not in data:
-            raise StructuredValidationError(f"Missing dataclass field: {field.name}")
-        value = data[field.name]
+            if field.default is MISSING and field.default_factory is MISSING:
+                raise StructuredValidationError(f"Missing dataclass field: {field.name}")
+            continue
         expected = hints.get(field.name)
-        if expected and not _matches_type(value, expected):
-            raise StructuredValidationError(f"Invalid type for dataclass field: {field.name}")
-        values[field.name] = value
+        try:
+            values[field.name] = _parse_structured_value(data[field.name], expected)
+        except StructuredValidationError as error:
+            raise StructuredValidationError(
+                f"Invalid type for dataclass field: {field.name}"
+            ) from error
     return model_class(**values)
+
+
+def _parse_structured_value(value: Any, expected: Any) -> Any:
+    origin = get_origin(expected)
+    args = get_args(expected)
+    if expected is Any:
+        return value
+    if origin in (typing.Union, types.UnionType):
+        if value is None and type(None) in args:
+            return None
+        for option in args:
+            if option is type(None):
+                continue
+            try:
+                return _parse_structured_value(value, option)
+            except StructuredValidationError:
+                pass
+        raise StructuredValidationError("Value does not match any union type.")
+    if is_dataclass(expected):
+        return _validate_dataclass(expected, value)
+    if isinstance(expected, type) and issubclass(expected, enum.Enum):
+        try:
+            return expected(value)
+        except ValueError as error:
+            raise StructuredValidationError("Value is not a valid enum member.") from error
+    if origin is list:
+        if not isinstance(value, list):
+            raise StructuredValidationError("Expected a JSON array.")
+        return [
+            _parse_structured_value(item, args[0]) if args else item
+            for item in value
+        ]
+    if origin is tuple:
+        if not isinstance(value, list):
+            raise StructuredValidationError("Expected a JSON array for tuple.")
+        if len(args) == 2 and args[1] is Ellipsis:
+            return tuple(_parse_structured_value(item, args[0]) for item in value)
+        if args and len(value) != len(args):
+            raise StructuredValidationError("Tuple has an unexpected number of items.")
+        return tuple(
+            _parse_structured_value(item, item_type)
+            for item, item_type in zip(value, args)
+        ) if args else tuple(value)
+    if origin is set:
+        if not isinstance(value, list):
+            raise StructuredValidationError("Expected a JSON array for set.")
+        return {
+            _parse_structured_value(item, args[0]) if args else item
+            for item in value
+        }
+    if origin is dict:
+        if not isinstance(value, dict):
+            raise StructuredValidationError("Expected a JSON object.")
+        if len(args) < 2:
+            return value
+        return {
+            _parse_structured_value(key, args[0]): _parse_structured_value(item, args[1])
+            for key, item in value.items()
+        }
+    if not _matches_type(value, expected):
+        raise StructuredValidationError("Value does not match the expected type.")
+    return value
 
 
 def _matches_type(value: Any, expected: Any) -> bool:
     origin = get_origin(expected)
     args = get_args(expected)
     if origin is None:
-        return expected is Any or isinstance(value, expected)
+        if expected is Any:
+            return True
+        if expected is int and isinstance(value, bool):
+            return False
+        return isinstance(value, expected)
+    if origin is Literal:
+        return any(type(value) is type(option) and value == option for option in args)
+    if isinstance(expected, type) and issubclass(expected, enum.Enum):
+        return any(
+            type(value) is type(member.value) and value == member.value
+            for member in expected
+        )
     if origin is list:
         return isinstance(value, list) and (not args or all(_matches_type(item, args[0]) for item in value))
     if origin is dict:
-        return isinstance(value, dict)
+        return isinstance(value, dict) and (
+            len(args) < 2
+            or all(
+                _matches_type(key, args[0]) and _matches_type(item, args[1])
+                for key, item in value.items()
+            )
+        )
     if origin is tuple:
-        return isinstance(value, tuple) or isinstance(value, list)
+        if not isinstance(value, (tuple, list)):
+            return False
+        if not args:
+            return True
+        if len(args) == 2 and args[1] is Ellipsis:
+            return all(_matches_type(item, args[0]) for item in value)
+        return len(value) == len(args) and all(
+            _matches_type(item, expected_item)
+            for item, expected_item in zip(value, args)
+        )
+    if origin is set:
+        return isinstance(value, (set, list)) and (
+            not args or all(_matches_type(item, args[0]) for item in value)
+        )
     if origin is type(None):
         return value is None
     if origin is Any:
