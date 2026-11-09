@@ -29,8 +29,9 @@ incremental stream APIs. The provider owns its SDK client; call `close()` or
 ## Structured responses
 
 Existing `response_model` and `validation_retries` calls remain available.
-`ConversationSession` does not yet support `response_model` validation and raises
-`NotImplementedError` if it is passed.
+`ConversationSession` supports validated `response_model` output for
+non-streaming `ask()` and `ask_async()` calls. Streaming session methods reject
+`response_model` because streamed output is not validated before it is yielded.
 Supported Pydantic, dataclass, `TypedDict`, and JSON Schema models are normalized
 to strict JSON Schema and sent using each provider's native request format where
 available. OpenAI and Azure use Chat Completions `response_format`; Anthropic
