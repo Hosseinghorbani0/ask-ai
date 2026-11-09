@@ -306,6 +306,10 @@ class MediaObject:
             f"sha256='{self.sha256[:8]}...'>"
         )
 
+    @property
+    def type(self) -> str:
+        """Return the media category, such as image, audio, or video."""
+        return self._media_type
 
 class ImageObject(MediaObject):
     """Represents image media with dimension parsing, PIL and NumPy interoperability."""
