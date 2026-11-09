@@ -1,4 +1,6 @@
 import asyncio
+import threading
+from dataclasses import dataclass
 
 import pytest
 
@@ -51,22 +53,34 @@ def test_session_uses_provider_observability():
     assert events[0]["type"] == "completed"
 
 
-def test_session_rejects_response_model_on_all_request_apis():
-    session = SessionProvider(api_key="test").session()
-    options = {"response_model": dict}
+def test_session_supports_structured_responses_and_rejects_streaming_validation():
+    @dataclass
+    class Result:
+        value: str
 
-    with pytest.raises(NotImplementedError, match="does not support response_model"):
-        session.ask("hello", **options)
+    class StructuredProvider(SessionProvider):
+        def _send_request(self, messages, config, output_type=None):
+            return Response('{"value": "ok"}')
+
+    session = StructuredProvider(api_key="test").session()
+
+    assert session.ask("extract", response_model=Result).parsed == Result("ok")
 
     async def verify_async_apis():
-        with pytest.raises(NotImplementedError, match="does not support response_model"):
-            await session.ask_async("hello", **options)
+        assert (
+            await session.ask_async("extract", response_model=Result)
+        ).parsed == Result("ok")
 
-        with pytest.raises(NotImplementedError, match="does not support response_model"):
-            [chunk for chunk in session.ask_stream("hello", **options)]
+        with pytest.raises(NotImplementedError, match="not supported for streaming"):
+            list(session.ask_stream("hello", response_model=Result))
 
-        with pytest.raises(NotImplementedError, match="does not support response_model"):
-            [chunk async for chunk in session.ask_stream_async("hello", **options)]
+        with pytest.raises(NotImplementedError, match="not supported for streaming"):
+            [
+                chunk
+                async for chunk in session.ask_stream_async(
+                    "hello", response_model=Result
+                )
+            ]
 
     asyncio.run(verify_async_apis())
 
@@ -79,6 +93,60 @@ def test_session_async_and_streaming():
         assert chunks == ["one|one|two"]
 
     asyncio.run(run())
+
+
+def test_session_serializes_concurrent_sync_requests():
+    first_complete = threading.Event()
+    snapshots = []
+
+    class BlockingProvider(SessionProvider):
+        def _send_request(self, messages, config, output_type=None):
+            snapshots.append([message["content"] for message in messages])
+            if len(snapshots) == 1:
+                first_complete.set()
+            else:
+                assert first_complete.is_set()
+            return Response("ok")
+
+    session = BlockingProvider(api_key="test").session()
+    threads = [
+        threading.Thread(target=session.ask, args=(prompt,))
+        for prompt in ("first", "second")
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+
+    assert len(snapshots) == 2
+    assert sorted(map(len, snapshots)) == [1, 3]
+    assert snapshots[1][1] == "ok"
+
+
+def test_session_serializes_concurrent_async_requests():
+    snapshots = []
+    first_complete = asyncio.Event()
+
+    class BlockingProvider(SessionProvider):
+        async def _send_request_async(self, messages, config, output_type=None):
+            snapshots.append([message["content"] for message in messages])
+            if len(snapshots) == 1:
+                await asyncio.sleep(0)
+                first_complete.set()
+            else:
+                assert first_complete.is_set()
+            return Response("ok")
+
+    session = BlockingProvider(api_key="test").session()
+
+    async def run():
+        await asyncio.gather(session.ask_async("first"), session.ask_async("second"))
+
+    asyncio.run(run())
+    assert len(snapshots) == 2
+    assert sorted(map(len, snapshots)) == [1, 3]
+    assert snapshots[1][1] == "ok"
 
 
 def test_session_sync_stream_retries_before_first_chunk(monkeypatch):
