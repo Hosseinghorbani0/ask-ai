@@ -17,28 +17,38 @@ class MediaPolicy:
     allow_private: bool = False
 
     def _validated_addresses(self, url: str) -> tuple[str, list[str]]:
-        parsed = urlparse(url)
-        if parsed.scheme != "https" or not parsed.hostname:
-            raise MediaSecurityError("Media URLs must use HTTPS and include a hostname.")
-        if self.allowed_hosts is not None and parsed.hostname not in self.allowed_hosts:
-            raise MediaSecurityError(f"Media host is not allowlisted: {parsed.hostname}")
         try:
-            addresses = [ipaddress.ip_address(parsed.hostname)]
+            parsed = urlparse(url)
+            hostname = parsed.hostname
+            port = parsed.port or 443
+        except ValueError as error:
+            raise MediaSecurityError("Media URL is malformed.") from error
+        if parsed.scheme != "https" or not hostname:
+            raise MediaSecurityError("Media URLs must use HTTPS and include a hostname.")
+        if parsed.username is not None or parsed.password is not None:
+            raise MediaSecurityError("Media URLs must not contain embedded credentials.")
+        hostname = _normalize_hostname(hostname)
+        if self.allowed_hosts is not None:
+            allowed_hosts = {_normalize_hostname(host) for host in self.allowed_hosts}
+            if hostname not in allowed_hosts:
+                raise MediaSecurityError(f"Media host is not allowlisted: {hostname}")
+        try:
+            addresses = [ipaddress.ip_address(hostname)]
         except ValueError:
             try:
                 address_info = socket.getaddrinfo(
-                    parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM
+                    hostname, port, type=socket.SOCK_STREAM
                 )
             except OSError as error:
                 raise MediaSecurityError(
-                    f"Unable to resolve media host: {parsed.hostname}"
+                    f"Unable to resolve media host: {hostname}"
                 ) from error
             addresses = [
                 ipaddress.ip_address(result[4][0].split("%", 1)[0])
                 for result in address_info
             ]
         if not addresses:
-            raise MediaSecurityError(f"Media host resolved to no addresses: {parsed.hostname}")
+            raise MediaSecurityError(f"Media host resolved to no addresses: {hostname}")
         if not self.allow_private:
             for address in addresses:
                 if (
@@ -53,7 +63,7 @@ class MediaPolicy:
                     raise MediaSecurityError(
                         f"Media host resolves to a non-public IP address: {address}"
                     )
-        return parsed.hostname, [str(address) for address in addresses]
+        return hostname, [str(address) for address in addresses]
 
     def validate_url(self, url: str) -> None:
         self._validated_addresses(url)
@@ -88,8 +98,22 @@ def download_media(url: str, policy: Optional[MediaPolicy] = None) -> bytes:
                 content_type = response.headers.get("content-type", "").split(";", 1)[0].strip()
                 policy.validate_mime(content_type)
                 length = response.headers.get("content-length")
-                if length and int(length) > policy.max_bytes:
-                    raise MediaSecurityError("Media payload exceeds the configured size limit.")
+                content_length = None
+                if length is not None:
+                    try:
+                        content_length = int(length)
+                    except (TypeError, ValueError) as error:
+                        raise MediaSecurityError(
+                            "Media response has an invalid Content-Length."
+                        ) from error
+                    if content_length < 0:
+                        raise MediaSecurityError(
+                            "Media response has an invalid Content-Length."
+                        )
+                    if content_length > policy.max_bytes:
+                        raise MediaSecurityError(
+                            "Media payload exceeds the configured size limit."
+                        )
                 chunks = []
                 total = 0
                 for chunk in response.iter_bytes():
@@ -97,6 +121,17 @@ def download_media(url: str, policy: Optional[MediaPolicy] = None) -> bytes:
                     if total > policy.max_bytes:
                         raise MediaSecurityError("Media payload exceeds the configured size limit.")
                     chunks.append(chunk)
+                content_encoding = response.headers.get(
+                    "content-encoding", "identity"
+                ).lower()
+                if (
+                    content_length is not None
+                    and content_encoding in {"", "identity"}
+                    and content_length != total
+                ):
+                    raise MediaSecurityError(
+                        "Media Content-Length does not match the streamed payload size."
+                    )
                 data = b"".join(chunks)
                 _, _, detected_mime = HeaderInspector.detect_type(data)
                 if policy.allowed_mime_types and detected_mime not in policy.allowed_mime_types:
@@ -112,6 +147,13 @@ def download_media(url: str, policy: Optional[MediaPolicy] = None) -> bytes:
         raise
     except Exception as error:
         raise MediaSecurityError(f"Secure media download failed: {error}") from error
+
+
+def _normalize_hostname(hostname: str) -> str:
+    try:
+        return hostname.encode("idna").decode("ascii").lower().rstrip(".")
+    except UnicodeError as error:
+        raise MediaSecurityError("Media URL contains an invalid hostname.") from error
 
 
 def _create_pinned_transport(httpx, hostname: str, addresses: list[str]):
