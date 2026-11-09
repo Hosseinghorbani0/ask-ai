@@ -27,7 +27,7 @@ class AnthropicProvider(BaseProvider):
             streaming=True,
             async_streaming=True,
             structured_output=True,
-            vision=True,
+            vision=False,
         )
 
     def __init__(self, api_key: str = None, model: str = None, **kwargs):
@@ -54,6 +54,7 @@ class AnthropicProvider(BaseProvider):
                 timeout=self.config.extra.get("timeout", 30.0),
                 max_retries=0,
             )
+        self._check_async_client_loop()
         return self._async_client
 
     def _get_api_key_env_var(self):
@@ -93,6 +94,8 @@ class AnthropicProvider(BaseProvider):
         }
         if system_instruction:
             kwargs["system"] = system_instruction
+        if config.stop:
+            kwargs["stop_sequences"] = config.stop
 
         response_model = config.extra.get("response_model")
         schema = strict_json_schema(response_model) if response_model is not None else None
@@ -166,6 +169,7 @@ class AnthropicProvider(BaseProvider):
     # ─── Async ─────────────────────────────────────────────
 
     async def _send_request_async(self, messages: list[dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
+        self._check_async_client_loop()
         if output_type in ("image", "audio"):
             raise MediaTypeNotSupportedError(f"Anthropic provider does not support {output_type} generation.")
 
@@ -196,6 +200,7 @@ class AnthropicProvider(BaseProvider):
             raise map_provider_exception(e, "Anthropic", "API") from e
 
     async def _send_request_stream_async(self, messages: list[dict[str, str]], config: AdvancedConfig) -> AsyncIterator[str]:
+        self._check_async_client_loop()
         """Async streaming with Anthropic."""
         try:
             kwargs = self._build_kwargs(messages, config)
@@ -206,6 +211,7 @@ class AnthropicProvider(BaseProvider):
             raise map_provider_exception(e, "Anthropic", "streaming") from e
 
     async def _send_request_stream_events_async(self, messages, config):
+        self._check_async_client_loop()
         try:
             kwargs = self._build_kwargs(messages, config)
             async with self.async_client.messages.stream(**kwargs) as stream:
