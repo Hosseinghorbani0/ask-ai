@@ -124,6 +124,9 @@ response = ai.ask("Write a script", retry=3, timeout=10)
 Requests default to `retry=2` (up to three attempts) for retryable timeout,
 connection, rate-limit (`429`), and server (`5xx`) errors. Authentication and
 invalid-request errors are not retried; use `retry=0` to disable retries.
+`timeout` bounds an individual provider call; `total_timeout` bounds the complete
+request, including retries and backoff. `Retry-After` is respected up to 30
+seconds.
 Streaming retries occur only before the first chunk/event, so already-emitted
 output is never duplicated.
 
@@ -351,12 +354,32 @@ groq = Groq()  # Requires GROQ_API_KEY
 router = Router(
     [openai, groq],
     policy="fastest",
+    max_attempts=2,
     profiles={
         "OpenAIProvider": {"latency_ms": 100},
         "GroqProvider": {"latency_ms": 50},
     },
 )
 response = router.ask("Explain routing")
+```
+
+The router defaults `max_attempts` to the number of configured providers and
+disables each provider's internal retries while routing, so retry attempts do
+not multiply across fallback providers.
+
+### OpenAI-compatible servers
+
+Use the generic adapter for local or hosted endpoints implementing OpenAI Chat
+Completions. Features beyond text and streaming remain conservatively disabled.
+
+```python
+from ask_ai import OpenAICompatibleProvider
+
+local = OpenAICompatibleProvider(
+    base_url="http://localhost:8000/v1",
+    model="your-served-model",
+)
+response = local.ask("Hello")
 ```
 
 ### 🔒 Secure Media Downloads
@@ -391,7 +414,15 @@ session.ask("My name is Ada.")
 print(session.ask("What is my name?").text)
 ```
 
-Session requests do not support `response_model` validation yet.
+Sessions support validated `response_model` requests for non-streaming calls.
+Structured validation is not available on streaming session methods.
+Concurrent sync requests serialize with one another, as do concurrent async
+requests. Do not mix sync and async operations concurrently on the same session.
+The current public request API does not accept image inputs; provider capability
+reports therefore keep `vision` disabled rather than implying images are sent.
+Provider clients can be deterministically released with `close()` /
+`aclose()` or sync/async context managers. An async provider client is bound to
+the first event loop that uses it; create a provider per loop.
 
 ---
 
