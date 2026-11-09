@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.1 - 2026-11-09
 
 - Redact provider exception messages from fallback logs, aggregate errors, and failure observability events while preserving the original exception as the aggregate cause.
 - Stop provider fallback on non-retryable request, authentication, and configuration errors across text and streaming APIs.
@@ -21,6 +21,11 @@
 
 - Add validated structured responses to non-streaming conversation sessions and preserve configured system prompts in session history.
 - Isolate retry counters across concurrent request contexts, reject negative retry counts, redact response content from repr/JSON parse errors, and expose media category through `MediaObject.type`.
+
+### Documentation
+
+- Refresh the English README as the canonical project guide and synchronize all existing translations with current APIs and capabilities.
+- Align the PyPI README with package extras, provider support, request behavior, and troubleshooting guidance.
 
 ## 0.6.0 - 2026-11-02
 
