@@ -72,7 +72,7 @@ def test_all_package_modules_and_providers_import():
 
 
 def test_release_version_and_requirements_are_aligned():
-    assert ask_ai.__version__ == "0.6.0"
+    assert ask_ai.__version__ == "0.6.1"
     pyproject = open("pyproject.toml", encoding="utf-8").read()
     assert f'version = "{ask_ai.__version__}"' in pyproject
     requirements = open("ask_ai/requirements.txt", encoding="utf-8").read()
