@@ -1,0 +1,542 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 8ca290f..0b8ab29 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,12 @@
+ # Changelog
+ 
++## Unreleased
++
++### Fixed
++
++- Add validated structured responses to non-streaming conversation sessions and preserve configured system prompts in session history.
++- Isolate retry counters across concurrent request contexts, reject negative retry counts, redact response content from repr/JSON parse errors, and expose media category through `MediaObject.type`.
++
+ ## 0.6.0 - 2026-11-02
+ 
+ ### Breaking changes
+diff --git a/README.md b/README.md
+index 5a8b569..73c78c2 100644
+--- a/README.md
++++ b/README.md
+@@ -391,7 +391,8 @@ session.ask("My name is Ada.")
+ print(session.ask("What is my name?").text)
+ ```
+ 
+-Session requests do not support `response_model` validation yet.
++Sessions support validated `response_model` requests for non-streaming calls.
++Structured validation is not available on streaming session methods.
+ 
+ ---
+ 
+diff --git a/ask_ai/base.py b/ask_ai/base.py
+index da46f65..5f9f3da 100644
+--- a/ask_ai/base.py
++++ b/ask_ai/base.py
+@@ -4,6 +4,7 @@ import os
+ import random
+ import time
+ from collections.abc import AsyncIterator, Iterator
++from contextvars import ContextVar
+ from typing import Any, Optional, Union
+ 
+ from .capabilities import Capabilities
+@@ -96,8 +97,7 @@ class Response:
+         return self.text
+ 
+     def __repr__(self) -> str:
+-        preview = self._raw_text[:80] + "..." if len(self._raw_text) > 80 else self._raw_text
+-        return f'<Response text="{preview}">'
++        return f"<Response length={len(self._raw_text)}>"
+ 
+     def save(self, path: str) -> None:
+         """Smart save based on content type."""
+@@ -131,6 +131,28 @@ class BaseProvider:
+         self.persona = persona
+         self.config = AdvancedConfig(**kwargs)
+         self._middleware: list[Observability] = []
++        self._retry_count_var = ContextVar(
++            f"ask_ai_retry_count_{id(self)}", default=None
++        )
++
++    @property
++    def _retry_count(self) -> int:
++        retry_count_var = getattr(self, "_retry_count_var", None)
++        retry_count = retry_count_var.get() if retry_count_var is not None else None
++        if retry_count is not None:
++            return retry_count
++        return getattr(self, "_last_retry_count", 0)
++
++    @_retry_count.setter
++    def _retry_count(self, value: int) -> None:
++        retry_count_var = getattr(self, "_retry_count_var", None)
++        if retry_count_var is None:
++            retry_count_var = ContextVar(
++                f"ask_ai_retry_count_{id(self)}", default=None
++            )
++            self._retry_count_var = retry_count_var
++        retry_count_var.set(value)
++        self._last_retry_count = value
+ 
+     @staticmethod
+     def _validate_option_names(options, allowed, strict=False):
+@@ -679,6 +701,8 @@ class BaseProvider:
+     # ─── Retry Logic ────────────────────────────────────────
+ 
+     def _iter_with_retry(self, iterator_factory, retry: int):
++        if retry < 0:
++            raise ValueError("retry must be non-negative.")
+         attempts = 0
+         self._retry_count = 0
+         while True:
+@@ -705,6 +729,8 @@ class BaseProvider:
+                 time.sleep(delay)
+ 
+     async def _aiter_with_retry(self, iterator_factory, retry: int):
++        if retry < 0:
++            raise ValueError("retry must be non-negative.")
+         attempts = 0
+         self._retry_count = 0
+         while True:
+@@ -732,6 +758,8 @@ class BaseProvider:
+ 
+     def _execute_with_retry(self, func, messages, config, output_type, retry):
+         """Execute a sync function with exponential backoff + jitter."""
++        if retry < 0:
++            raise ValueError("retry must be non-negative.")
+         attempts = 0
+         last_error = None
+         self._retry_count = 0
+@@ -760,6 +788,8 @@ class BaseProvider:
+ 
+     async def _execute_with_retry_async(self, func, messages, config, output_type, retry):
+         """Execute an async function with exponential backoff + jitter."""
++        if retry < 0:
++            raise ValueError("retry must be non-negative.")
+         attempts = 0
+         last_error = None
+         self._retry_count = 0
+diff --git a/ask_ai/media.py b/ask_ai/media.py
+index a7d8d92..ca123b5 100644
+--- a/ask_ai/media.py
++++ b/ask_ai/media.py
+@@ -306,6 +306,10 @@ class MediaObject:
+             f"sha256='{self.sha256[:8]}...'>"
+         )
+ 
++    @property
++    def type(self) -> str:
++        """Return the media category, such as image, audio, or video."""
++        return self._media_type
+ 
+ class ImageObject(MediaObject):
+     """Represents image media with dimension parsing, PIL and NumPy interoperability."""
+diff --git a/ask_ai/session.py b/ask_ai/session.py
+index 24a96d4..4f6eadc 100644
+--- a/ask_ai/session.py
++++ b/ask_ai/session.py
+@@ -29,21 +29,26 @@ class ConversationSession:
+     def clear(self) -> None:
+         self.messages.clear()
+ 
+-    def _validate_options(self, kwargs: dict[str, Any]) -> None:
+-        if kwargs.get("response_model") is not None:
++    def _validate_options(self, kwargs: dict[str, Any], streaming: bool = False) -> None:
++        if streaming and kwargs.get("response_model") is not None:
+             raise NotImplementedError(
+-                "ConversationSession does not support response_model validation yet."
++                "Structured response validation is not supported for streaming sessions."
+             )
+         if self.strict_options and "strict_options" not in kwargs:
+             kwargs["strict_options"] = True
+ 
++    def _messages_for_request(self, query: str, config: Any) -> list[dict[str, str]]:
++        request_messages = self.provider._prepare_messages(query, config)
++        if request_messages and request_messages[0]["role"] == "system":
++            return [request_messages[0], *self.messages, request_messages[-1]]
++        return [*self.messages, *request_messages]
++
+     def ask(self, query: str, **kwargs: Any):
+         self._validate_options(kwargs)
+         started_at = time.perf_counter()
+         config = self.provider._build_final_config(kwargs)
+-        messages = [*self.messages, {"role": "user", "content": query}]
+-        response = self.provider._execute_with_retry(
+-            self.provider._send_request,
++        messages = self._messages_for_request(query, config)
++        response = self.provider._execute_response(
+             messages,
+             config,
+             kwargs.get("output_type"),
+@@ -51,11 +56,9 @@ class ConversationSession:
+                 kwargs.get("retry", config.extra.get("retry", DEFAULT_RETRY_COUNT))
+                 or 0
+             ),
+-        )
+-        response = self.provider._attach_metadata(
+-            response,
++            kwargs.get("response_model"),
++            int(kwargs.get("validation_retries", 0) or 0),
+             started_at,
+-            getattr(self.provider, "_retry_count", 0),
+         )
+         self.messages.extend(
+             [{"role": "user", "content": query}, {"role": "assistant", "content": response.text}]
+@@ -67,9 +70,8 @@ class ConversationSession:
+         self._validate_options(kwargs)
+         started_at = time.perf_counter()
+         config = self.provider._build_final_config(kwargs)
+-        messages = [*self.messages, {"role": "user", "content": query}]
+-        response = await self.provider._execute_with_retry_async(
+-            self.provider._send_request_async,
++        messages = self._messages_for_request(query, config)
++        response = await self.provider._execute_response_async(
+             messages,
+             config,
+             kwargs.get("output_type"),
+@@ -77,11 +79,9 @@ class ConversationSession:
+                 kwargs.get("retry", config.extra.get("retry", DEFAULT_RETRY_COUNT))
+                 or 0
+             ),
+-        )
+-        response = self.provider._attach_metadata(
+-            response,
++            kwargs.get("response_model"),
++            int(kwargs.get("validation_retries", 0) or 0),
+             started_at,
+-            getattr(self.provider, "_retry_count", 0),
+         )
+         self.messages.extend(
+             [{"role": "user", "content": query}, {"role": "assistant", "content": response.text}]
+@@ -90,10 +90,10 @@ class ConversationSession:
+         return response
+ 
+     def ask_stream(self, query: str, **kwargs: Any) -> Iterator[str]:
+-        self._validate_options(kwargs)
++        self._validate_options(kwargs, streaming=True)
+         started_at = time.perf_counter()
+         config = self.provider._build_final_config(kwargs)
+-        messages = [*self.messages, {"role": "user", "content": query}]
++        messages = self._messages_for_request(query, config)
+         retry = int(
+             kwargs.get("retry", config.extra.get("retry", DEFAULT_RETRY_COUNT)) or 0
+         )
+@@ -115,10 +115,10 @@ class ConversationSession:
+         self._trim()
+ 
+     async def ask_stream_async(self, query: str, **kwargs: Any) -> AsyncIterator[str]:
+-        self._validate_options(kwargs)
++        self._validate_options(kwargs, streaming=True)
+         started_at = time.perf_counter()
+         config = self.provider._build_final_config(kwargs)
+-        messages = [*self.messages, {"role": "user", "content": query}]
++        messages = self._messages_for_request(query, config)
+         retry = int(
+             kwargs.get("retry", config.extra.get("retry", DEFAULT_RETRY_COUNT)) or 0
+         )
+diff --git a/ask_ai/structured.py b/ask_ai/structured.py
+index d2bd8bd..417c043 100644
+--- a/ask_ai/structured.py
++++ b/ask_ai/structured.py
+@@ -233,7 +233,9 @@ def _validate_dataclass(model_class: type[Any], data: Any) -> Any:
+     values = {}
+     for field in fields(model_class):
+         if field.name not in data:
+-            raise StructuredValidationError(f"Missing dataclass field: {field.name}")
++            if field.default is MISSING and field.default_factory is MISSING:
++                raise StructuredValidationError(f"Missing dataclass field: {field.name}")
++            continue
+         value = data[field.name]
+         expected = hints.get(field.name)
+         if expected and not _matches_type(value, expected):
+@@ -246,13 +248,38 @@ def _matches_type(value: Any, expected: Any) -> bool:
+     origin = get_origin(expected)
+     args = get_args(expected)
+     if origin is None:
+-        return expected is Any or isinstance(value, expected)
++        if expected is Any:
++            return True
++        if expected is int and isinstance(value, bool):
++            return False
++        return isinstance(value, expected)
++    if origin is Literal:
++        return any(type(value) is type(option) and value == option for option in args)
+     if origin is list:
+         return isinstance(value, list) and (not args or all(_matches_type(item, args[0]) for item in value))
+     if origin is dict:
+-        return isinstance(value, dict)
++        return isinstance(value, dict) and (
++            len(args) < 2
++            or all(
++                _matches_type(key, args[0]) and _matches_type(item, args[1])
++                for key, item in value.items()
++            )
++        )
+     if origin is tuple:
+-        return isinstance(value, tuple) or isinstance(value, list)
++        if not isinstance(value, (tuple, list)):
++            return False
++        if not args:
++            return True
++        if len(args) == 2 and args[1] is Ellipsis:
++            return all(_matches_type(item, args[0]) for item in value)
++        return len(value) == len(args) and all(
++            _matches_type(item, expected_item)
++            for item, expected_item in zip(value, args)
++        )
++    if origin is set:
++        return isinstance(value, (set, list)) and (
++            not args or all(_matches_type(item, args[0]) for item in value)
++        )
+     if origin is type(None):
+         return value is None
+     if origin is Any:
+diff --git a/ask_ai/utils.py b/ask_ai/utils.py
+index 7054f86..7e066e5 100644
+--- a/ask_ai/utils.py
++++ b/ask_ai/utils.py
+@@ -62,6 +62,5 @@ def parse_json(text: str) -> Union[dict[str, Any], list[Any]]:
+ 
+     from .exceptions import AskAIParsingError
+     raise AskAIParsingError(
+-        f"Failed to parse JSON from response.\n"
+-        f"Content snippet: {text[:200]}..."
++        f"Failed to parse JSON from response ({len(text)} characters)."
+     )
+diff --git a/docs/MIGRATION_v0.6.0.md b/docs/MIGRATION_v0.6.0.md
+index 01309d1..58903ba 100644
+--- a/docs/MIGRATION_v0.6.0.md
++++ b/docs/MIGRATION_v0.6.0.md
+@@ -29,8 +29,9 @@ incremental stream APIs. The provider owns its SDK client; call `close()` or
+ ## Structured responses
+ 
+ Existing `response_model` and `validation_retries` calls remain available.
+-`ConversationSession` does not yet support `response_model` validation and raises
+-`NotImplementedError` if it is passed.
++`ConversationSession` supports validated `response_model` output for
++non-streaming `ask()` and `ask_async()` calls. Streaming session methods reject
++`response_model` because streamed output is not validated before it is yielded.
+ Supported Pydantic, dataclass, `TypedDict`, and JSON Schema models are normalized
+ to strict JSON Schema and sent using each provider's native request format where
+ available. OpenAI and Azure use Chat Completions `response_format`; Anthropic
+diff --git a/docs/PYPI_README.md b/docs/PYPI_README.md
+index fbc448a..f20b8c5 100644
+--- a/docs/PYPI_README.md
++++ b/docs/PYPI_README.md
+@@ -174,8 +174,9 @@ session.ask("My name is Ada.")
+ print(session.ask("What is my name?").text)
+ ```
+ 
+-Session state is not persisted, and session requests do not support
+-`response_model` validation yet.
++Session state is not persisted. Non-streaming session requests support
++validated `response_model` output; streaming session methods do not validate
++structured responses.
+ 
+ ## 🗺️ Roadmap
+ 
+diff --git a/tests/test_core.py b/tests/test_core.py
+index 9916773..9335aaf 100644
+--- a/tests/test_core.py
++++ b/tests/test_core.py
+@@ -2,6 +2,7 @@ import asyncio
+ import importlib
+ import os
+ import pkgutil
++import threading
+ 
+ import pytest
+ 
+@@ -9,6 +10,7 @@ import ask_ai
+ from ask_ai import AdvancedConfig, Azure, OpenAI
+ from ask_ai.base import BaseProvider
+ from ask_ai.exceptions import (
++    AskAIParsingError,
+     ProviderAuthError,
+     ProviderConnectionError,
+     ProviderInvalidRequestError,
+@@ -86,6 +88,74 @@ def test_config_merge_preserves_safe_mode_when_request_omits_it():
+     assert AdvancedConfig(retry=2).to_dict()["extra"]["retry"] == 2
+ 
+ 
++def test_retry_count_is_request_context_local_across_threads_and_tasks():
++    provider = object.__new__(BaseProvider)
++    thread_barrier = threading.Barrier(2)
++    thread_results = {}
++
++    def set_thread_retry(name, value):
++        provider._retry_count = value
++        thread_barrier.wait()
++        thread_results[name] = provider._retry_count
++
++    threads = [
++        threading.Thread(target=set_thread_retry, args=("one", 1)),
++        threading.Thread(target=set_thread_retry, args=("zero", 0)),
++    ]
++    for thread in threads:
++        thread.start()
++    for thread in threads:
++        thread.join()
++
++    assert thread_results == {"one": 1, "zero": 0}
++
++    async def verify_tasks():
++        first_set = asyncio.Event()
++        second_set = asyncio.Event()
++
++        async def first():
++            provider._retry_count = 1
++            first_set.set()
++            await second_set.wait()
++            return provider._retry_count
++
++        async def second():
++            await first_set.wait()
++            provider._retry_count = 0
++            second_set.set()
++            return provider._retry_count
++
++        return await asyncio.gather(first(), second())
++
++    assert asyncio.run(verify_tasks()) == [1, 0]
++
++
++def test_negative_retry_count_fails_before_provider_call():
++    provider = object.__new__(BaseProvider)
++    calls = []
++
++    with pytest.raises(ValueError, match="retry must be non-negative"):
++        provider._execute_with_retry(
++            lambda *args: calls.append(args),
++            [],
++            AdvancedConfig(),
++            None,
++            -1,
++        )
++
++    assert calls == []
++
++
++def test_response_repr_and_json_parse_errors_do_not_include_response_text():
++    secret = "customer-secret@example.test"
++    response = ask_ai.Response(secret)
++
++    assert secret not in repr(response)
++    with pytest.raises(AskAIParsingError) as error:
++        response.json
++    assert secret not in str(error.value)
++
++
+ def test_provider_exception_mapper_and_retry_policy():
+     class ErrorWithStatus(Exception):
+         def __init__(self, status_code):
+diff --git a/tests/test_media_security.py b/tests/test_media_security.py
+index 7f20b79..242b6c5 100644
+--- a/tests/test_media_security.py
++++ b/tests/test_media_security.py
+@@ -106,6 +106,12 @@ def test_media_from_base64_checks_encoded_length_before_decoding():
+         ImageObject.from_base64("AAAAAA==", max_encoded_length=4)
+ 
+ 
++def test_image_exposes_media_type_used_by_cli_and_examples():
++    image = ImageObject(b"\x89PNG\r\n\x1a\n")
++
++    assert image.type == "image"
++
++
+ def test_media_download_rejects_redirects(monkeypatch):
+     class Response:
+         status_code = 302
+diff --git a/tests/test_session.py b/tests/test_session.py
+index 6e23b5a..ad38265 100644
+--- a/tests/test_session.py
++++ b/tests/test_session.py
+@@ -1,4 +1,5 @@
+ import asyncio
++from dataclasses import dataclass
+ 
+ import pytest
+ 
+@@ -51,22 +52,34 @@ def test_session_uses_provider_observability():
+     assert events[0]["type"] == "completed"
+ 
+ 
+-def test_session_rejects_response_model_on_all_request_apis():
+-    session = SessionProvider(api_key="test").session()
+-    options = {"response_model": dict}
++def test_session_supports_structured_responses_and_rejects_streaming_validation():
++    @dataclass
++    class Result:
++        value: str
+ 
+-    with pytest.raises(NotImplementedError, match="does not support response_model"):
+-        session.ask("hello", **options)
++    class StructuredProvider(SessionProvider):
++        def _send_request(self, messages, config, output_type=None):
++            return Response('{"value": "ok"}')
+ 
+-    async def verify_async_apis():
+-        with pytest.raises(NotImplementedError, match="does not support response_model"):
+-            await session.ask_async("hello", **options)
++    session = StructuredProvider(api_key="test").session()
+ 
+-        with pytest.raises(NotImplementedError, match="does not support response_model"):
+-            [chunk for chunk in session.ask_stream("hello", **options)]
++    assert session.ask("extract", response_model=Result).parsed == Result("ok")
+ 
+-        with pytest.raises(NotImplementedError, match="does not support response_model"):
+-            [chunk async for chunk in session.ask_stream_async("hello", **options)]
++    async def verify_async_apis():
++        assert (
++            await session.ask_async("extract", response_model=Result)
++        ).parsed == Result("ok")
++
++        with pytest.raises(NotImplementedError, match="not supported for streaming"):
++            list(session.ask_stream("hello", response_model=Result))
++
++        with pytest.raises(NotImplementedError, match="not supported for streaming"):
++            [
++                chunk
++                async for chunk in session.ask_stream_async(
++                    "hello", response_model=Result
++                )
++            ]
+ 
+     asyncio.run(verify_async_apis())
+ 
+diff --git a/tests/test_structured.py b/tests/test_structured.py
+index bf5112b..370c51f 100644
+--- a/tests/test_structured.py
++++ b/tests/test_structured.py
+@@ -1,5 +1,5 @@
+ from dataclasses import dataclass
+-from typing import TypedDict
++from typing import Literal, TypedDict
+ 
+ import pytest
+ 
+@@ -35,6 +35,24 @@ def test_structured_response_rejects_invalid_data():
+         parse_structured('{"name": "Ada", "age": "wrong"}', User)
+ 
+ 
++def test_dataclass_default_fields_are_applied_when_omitted():
++    @dataclass
++    class UserWithDefault:
++        name: str
++        active: bool = True
++
++    assert parse_structured('{"name": "Ada"}', UserWithDefault) == UserWithDefault("Ada")
++
++
++def test_invalid_literal_value_raises_structured_validation_error():
++    @dataclass
++    class Result:
++        status: Literal["ok", "error"]
++
++    with pytest.raises(StructuredValidationError, match="status"):
++        parse_structured('{"status": "unknown"}', Result)
++
++
+ def test_structured_response_retries_validation_errors(monkeypatch):
+     provider = object.__new__(OpenAI)
+     provider.config = AdvancedConfig()
