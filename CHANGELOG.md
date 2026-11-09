@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- Redact provider exception messages from fallback logs, aggregate errors, and failure observability events while preserving the original exception as the aggregate cause.
+- Stop provider fallback on non-retryable request, authentication, and configuration errors across text and streaming APIs.
+- Stream synchronous custom-provider chunks incrementally through the async adapter and close the source on early exit or cancellation.
+- Add request-wide `total_timeout`, honor bounded provider `Retry-After` hints, and cap Router calls with `max_attempts` to prevent retry multiplication.
+- Serialize sync and async operations independently per conversation session to keep concurrent request history coherent.
+- Forward Anthropic stop sequences, align Google structured-output capabilities, and reject unsupported image inputs and output types explicitly.
+- Align `Response.json` with JSON scalar/container values, validate `to_model()` through the structured parser, and accept empty JSON Schemas.
+- Add provider sync/async close and context-manager APIs and reject reuse of cached async clients across event loops.
+- Add `OpenAICompatibleProvider` for configured OpenAI Chat Completions-compatible endpoints with conservative capabilities.
+- Add a parametrized provider contract suite for all built-in providers and `OpenAICompatibleProvider`, covering imports, normalized responses, error mapping/redaction, streaming lifecycle, option forwarding, structured output, capabilities, client cleanup, and event-loop ownership.
+- Extend structured dataclass parsing for nested models, optional/union fields, enums, and provider contract coverage for Pydantic v1/v2 and bounded malformed/fenced JSON retries.
+- Forward Google stop sequences through generation config.
+- Expand CI to Windows and add a Python 3.13 coverage report, a focused mypy check for the OpenAI-compatible provider, and a clean-environment pip-audit job.
+- Add table-driven media URL checks for embedded credentials, IDNA allowlists, IPv4-mapped and alternate numeric IP forms, changing DNS answers, and invalid or mismatched Content-Length values; reject URL userinfo and malformed lengths.
+
+### Fixed
+
+- Add validated structured responses to non-streaming conversation sessions and preserve configured system prompts in session history.
+- Isolate retry counters across concurrent request contexts, reject negative retry counts, redact response content from repr/JSON parse errors, and expose media category through `MediaObject.type`.
+
 ## 0.6.0 - 2026-11-02
 
 ### Breaking changes
