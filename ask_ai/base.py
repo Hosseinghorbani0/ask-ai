@@ -1,20 +1,72 @@
 import asyncio
 import logging
+import math
 import os
 import random
+import threading
 import time
+import weakref
 from collections.abc import AsyncIterator, Iterator
+from concurrent.futures import CancelledError as FutureCancelledError
+from concurrent.futures import TimeoutError as FutureTimeoutError
+from contextvars import ContextVar
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Optional, Union
 
 from .capabilities import Capabilities
 from .config import CONFIG_OPTION_NAMES, AdvancedConfig, validate_option_names
 from .events import Completed, Error, TextDelta, ToolCall, UsageUpdate
-from .exceptions import StructuredValidationError
+from .exceptions import (
+    MediaTypeNotSupportedError,
+    ProviderError,
+    ProviderTimeoutError,
+    StructuredValidationError,
+    safe_provider_error_label,
+)
 from .media import AudioObject, ImageObject
 from .observability import Observability, ResponseMetadata, Usage
 
 logger = logging.getLogger("ask_ai")
 DEFAULT_RETRY_COUNT = 2
+MAX_RETRY_DELAY = 30.0
+JSONValue = Union[
+    None,
+    bool,
+    int,
+    float,
+    str,
+    list["JSONValue"],
+    dict[str, "JSONValue"],
+]
+
+
+def _retry_after_seconds(error: Exception) -> Optional[float]:
+    retry_after = getattr(error, "retry_after", None)
+    if retry_after is None:
+        response = getattr(error, "response", None)
+        headers = getattr(response, "headers", None)
+        if headers is not None:
+            retry_after = headers.get("Retry-After")
+    if retry_after is None:
+        return None
+    try:
+        seconds = float(retry_after)
+    except (TypeError, ValueError):
+        try:
+            retry_at = parsedate_to_datetime(str(retry_after))
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            seconds = (retry_at - datetime.now(timezone.utc)).total_seconds()
+        except (TypeError, ValueError, OverflowError):
+            return None
+    return min(MAX_RETRY_DELAY, max(0.0, seconds))
+
+
+def _retry_delay(error: Exception, attempts: int) -> float:
+    exponential = min(2**attempts + random.uniform(0, 1), MAX_RETRY_DELAY)
+    retry_after = _retry_after_seconds(error)
+    return min(MAX_RETRY_DELAY, max(exponential, retry_after or 0.0))
 
 
 class Response:
@@ -59,13 +111,13 @@ class Response:
     @property
     def parsed(self) -> Any:
         """Return the validated structured response, if one was requested."""
-        if not self.response_model:
+        if self.response_model is None:
             raise ValueError("No response_model was specified for this request.")
         from .structured import parse_structured
         return parse_structured(self._raw_text, self.response_model)
 
     @property
-    def json(self) -> Union[dict[str, Any], list]:
+    def json(self) -> JSONValue:
         """Returns parsed JSON. If 'json=True' was passed, this is highly reliable."""
         from .utils import parse_json
         return parse_json(self._raw_text)
@@ -73,31 +125,20 @@ class Response:
     @property
     def pydantic(self) -> Any:
         """Returns parsed Pydantic model instance if response_model was provided."""
-        if not self.response_model:
+        if self.response_model is None:
             raise ValueError("No response_model was specified for this request.")
         return self.parsed
 
     def to_model(self, model_class: Any) -> Any:
-        """Parse the response text into a specified Pydantic model."""
+        """Parse and validate the response text against a supported model."""
         from .structured import parse_structured
-        if isinstance(model_class, dict) or hasattr(model_class, "model_validate") or hasattr(model_class, "parse_obj"):
-            return parse_structured(self._raw_text, model_class)
-        text_content = self.text
-        if hasattr(model_class, "model_validate_json"):
-            return model_class.model_validate_json(text_content)
-        elif hasattr(model_class, "parse_raw"):
-            return model_class.parse_raw(text_content)
-        else:
-            import json
-            data = json.loads(text_content)
-            return model_class(**data)
+        return parse_structured(self._raw_text, model_class)
 
     def __str__(self) -> str:
         return self.text
 
     def __repr__(self) -> str:
-        preview = self._raw_text[:80] + "..." if len(self._raw_text) > 80 else self._raw_text
-        return f'<Response text="{preview}">'
+        return f"<Response length={len(self._raw_text)}>"
 
     def save(self, path: str) -> None:
         """Smart save based on content type."""
@@ -131,6 +172,73 @@ class BaseProvider:
         self.persona = persona
         self.config = AdvancedConfig(**kwargs)
         self._middleware: list[Observability] = []
+        self._retry_count_var = ContextVar(
+            f"ask_ai_retry_count_{id(self)}", default=None
+        )
+        self._async_client_loop_ref = None
+
+    def _check_async_client_loop(self) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        owner_ref = getattr(self, "_async_client_loop_ref", None)
+        if owner_ref is None:
+            self._async_client_loop_ref = weakref.ref(loop)
+        elif owner_ref() is not loop:
+            raise RuntimeError(
+                "This provider's async client is bound to another event loop. "
+                "Create a provider per loop or use one long-lived loop."
+            )
+
+    def close(self) -> None:
+        """Close the provider's synchronous client, if it has one."""
+        client = getattr(self, "client", None)
+        close = getattr(client, "close", None)
+        if callable(close):
+            close()
+
+    async def aclose(self) -> None:
+        """Close the provider's asynchronous client, if it has one."""
+        client = getattr(self, "_async_client", None)
+        if client is not None:
+            close = getattr(client, "aclose", None) or getattr(client, "close", None)
+            if callable(close):
+                result = close()
+                if hasattr(result, "__await__"):
+                    await result
+        self.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+        await self.aclose()
+
+    @property
+    def _retry_count(self) -> int:
+        retry_count_var = getattr(self, "_retry_count_var", None)
+        retry_count = retry_count_var.get() if retry_count_var is not None else None
+        if retry_count is not None:
+            return retry_count
+        return getattr(self, "_last_retry_count", 0)
+
+    @_retry_count.setter
+    def _retry_count(self, value: int) -> None:
+        retry_count_var = getattr(self, "_retry_count_var", None)
+        if retry_count_var is None:
+            retry_count_var = ContextVar(
+                f"ask_ai_retry_count_{id(self)}", default=None
+            )
+            self._retry_count_var = retry_count_var
+        retry_count_var.set(value)
+        self._last_retry_count = value
 
     @staticmethod
     def _validate_option_names(options, allowed, strict=False):
@@ -191,10 +299,19 @@ class BaseProvider:
             model=self.model,
             latency_ms=(time.perf_counter() - started_at) * 1000,
             retry_count=getattr(self, "_retry_count", 0),
-            failure_reason=str(error),
+            failure_reason=type(error).__name__,
         )
         for middleware in getattr(self, "_middleware", []):
-            middleware.emit({"type": "failed", "metadata": metadata, "error": error})
+            middleware.emit(
+                {
+                    "type": "failed",
+                    "metadata": metadata,
+                    "error": {
+                        "provider": self.__class__.__name__,
+                        "type": type(error).__name__,
+                    },
+                }
+            )
 
     def _validation_retry_messages(
         self, messages: list[dict[str, str]], response: Response, error: StructuredValidationError
@@ -225,10 +342,16 @@ class BaseProvider:
             raise ValueError("validation_retries must be non-negative.")
         request_messages = messages
         retry_count = 0
+        deadline = self._create_deadline(config)
         try:
             for attempt in range(validation_retries + 1):
                 response = self._execute_with_retry(
-                    self._send_request, request_messages, config, output_type, retry
+                    self._send_request,
+                    request_messages,
+                    config,
+                    output_type,
+                    retry,
+                    deadline=deadline,
                 )
                 response._kwargs.update(
                     {
@@ -269,10 +392,16 @@ class BaseProvider:
             raise ValueError("validation_retries must be non-negative.")
         request_messages = messages
         retry_count = 0
+        deadline = self._create_deadline(config)
         try:
             for attempt in range(validation_retries + 1):
                 response = await self._execute_with_retry_async(
-                    self._send_request_async, request_messages, config, output_type, retry
+                    self._send_request_async,
+                    request_messages,
+                    config,
+                    output_type,
+                    retry,
+                    deadline=deadline,
                 )
                 response._kwargs.update(
                     {
@@ -337,22 +466,33 @@ class BaseProvider:
             if not isinstance(providers, (list, tuple)):
                 providers = [providers]
             errors = []
+            last_error = None
             for p in providers:
                 if isinstance(p, type):
                     try:
                         p_inst = p()
                     except Exception as e:
-                        errors.append(f"{p.__name__} init failed: {e}")
+                        if not self._is_retryable_error(e):
+                            raise
+                        last_error = e
+                        errors.append(safe_provider_error_label(p.__name__, e))
                         continue
                 else:
                     p_inst = p
                 try:
                     return p_inst.ask(query, **kwargs)
                 except Exception as e:
-                    errors.append(f"{p_inst.__class__.__name__}: {e}")
-                    logger.warning("Provider fallback failed for %s: %s", p_inst.__class__.__name__, e)
-            from .exceptions import ProviderError
-            raise ProviderError(f"All fallback providers failed: {errors}")
+                    if not self._is_retryable_error(e):
+                        raise
+                    last_error = e
+                    provider_name = p_inst.__class__.__name__
+                    errors.append(safe_provider_error_label(provider_name, e))
+                    logger.warning(
+                        "Provider fallback failed for %s: %s",
+                        provider_name,
+                        type(e).__name__,
+                    )
+            raise ProviderError(f"All fallback providers failed: {errors}") from last_error
 
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
@@ -378,12 +518,16 @@ class BaseProvider:
             if not isinstance(providers, (list, tuple)):
                 providers = [providers]
             errors = []
+            last_error = None
             for p in providers:
                 if isinstance(p, type):
                     try:
                         p_inst = p()
                     except Exception as e:
-                        errors.append(f"{p.__name__} init failed: {e}")
+                        if not self._is_retryable_error(e):
+                            raise
+                        last_error = e
+                        errors.append(safe_provider_error_label(p.__name__, e))
                         continue
                 else:
                     p_inst = p
@@ -394,12 +538,17 @@ class BaseProvider:
                         yield chunk
                     return
                 except Exception as e:
-                    if emitted:
+                    if emitted or not self._is_retryable_error(e):
                         raise
-                    errors.append(f"{p_inst.__class__.__name__}: {e}")
-                    logger.warning("Provider fallback failed for %s: %s", p_inst.__class__.__name__, e)
-            from .exceptions import ProviderError
-            raise ProviderError(f"All fallback providers failed: {errors}")
+                    last_error = e
+                    provider_name = p_inst.__class__.__name__
+                    errors.append(safe_provider_error_label(provider_name, e))
+                    logger.warning(
+                        "Provider fallback failed for %s: %s",
+                        provider_name,
+                        type(e).__name__,
+                    )
+            raise ProviderError(f"All fallback providers failed: {errors}") from last_error
 
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
@@ -410,6 +559,8 @@ class BaseProvider:
         yield from self._iter_with_retry(
             lambda: self._send_request_stream(messages, final_config),
             retry,
+            deadline=self._create_deadline(final_config),
+            config=final_config,
         )
 
     def ask_stream_events(self, query: str, **kwargs) -> Iterator[Any]:
@@ -426,6 +577,9 @@ class BaseProvider:
                     for event in provider_instance.ask_stream_events(query, **kwargs):
                         if isinstance(event, Error):
                             if not emitted and event.emitted_chunks == 0:
+                                if not self._is_retryable_error(event.error):
+                                    yield event
+                                    return
                                 last_error = event
                                 break
                             yield event
@@ -437,6 +591,9 @@ class BaseProvider:
                 except Exception as error:
                     if emitted:
                         raise
+                    if not self._is_retryable_error(error):
+                        yield Error(error=error, emitted_chunks=0)
+                        return
                     last_error = Error(error=error, emitted_chunks=0)
             if last_error is not None:
                 yield last_error
@@ -455,6 +612,8 @@ class BaseProvider:
             for event in self._iter_with_retry(
                 lambda: self._send_request_stream_events(messages, final_config),
                 retry,
+                deadline=self._create_deadline(final_config),
+                config=final_config,
             ):
                 if isinstance(event, TextDelta):
                     emitted_chunks += 1
@@ -483,22 +642,33 @@ class BaseProvider:
             if not isinstance(providers, (list, tuple)):
                 providers = [providers]
             errors = []
+            last_error = None
             for p in providers:
                 if isinstance(p, type):
                     try:
                         p_inst = p()
                     except Exception as e:
-                        errors.append(f"{p.__name__} init failed: {e}")
+                        if not self._is_retryable_error(e):
+                            raise
+                        last_error = e
+                        errors.append(safe_provider_error_label(p.__name__, e))
                         continue
                 else:
                     p_inst = p
                 try:
                     return await p_inst.ask_async(query, **kwargs)
                 except Exception as e:
-                    errors.append(f"{p_inst.__class__.__name__}: {e}")
-                    logger.warning("Provider fallback failed for %s: %s", p_inst.__class__.__name__, e)
-            from .exceptions import ProviderError
-            raise ProviderError(f"All fallback providers failed: {errors}")
+                    if not self._is_retryable_error(e):
+                        raise
+                    last_error = e
+                    provider_name = p_inst.__class__.__name__
+                    errors.append(safe_provider_error_label(provider_name, e))
+                    logger.warning(
+                        "Provider fallback failed for %s: %s",
+                        provider_name,
+                        type(e).__name__,
+                    )
+            raise ProviderError(f"All fallback providers failed: {errors}") from last_error
 
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
@@ -524,12 +694,16 @@ class BaseProvider:
             if not isinstance(providers, (list, tuple)):
                 providers = [providers]
             errors = []
+            last_error = None
             for p in providers:
                 if isinstance(p, type):
                     try:
                         p_inst = p()
                     except Exception as e:
-                        errors.append(f"{p.__name__} init failed: {e}")
+                        if not self._is_retryable_error(e):
+                            raise
+                        last_error = e
+                        errors.append(safe_provider_error_label(p.__name__, e))
                         continue
                 else:
                     p_inst = p
@@ -540,12 +714,17 @@ class BaseProvider:
                         yield chunk
                     return
                 except Exception as e:
-                    if emitted:
+                    if emitted or not self._is_retryable_error(e):
                         raise
-                    errors.append(f"{p_inst.__class__.__name__}: {e}")
-                    logger.warning("Provider fallback failed for %s: %s", p_inst.__class__.__name__, e)
-            from .exceptions import ProviderError
-            raise ProviderError(f"All fallback providers failed: {errors}")
+                    last_error = e
+                    provider_name = p_inst.__class__.__name__
+                    errors.append(safe_provider_error_label(provider_name, e))
+                    logger.warning(
+                        "Provider fallback failed for %s: %s",
+                        provider_name,
+                        type(e).__name__,
+                    )
+            raise ProviderError(f"All fallback providers failed: {errors}") from last_error
 
         final_config = self._build_final_config(kwargs)
         messages = self._prepare_messages(query, final_config)
@@ -556,6 +735,8 @@ class BaseProvider:
         async for chunk in self._aiter_with_retry(
             lambda: self._send_request_stream_async(messages, final_config),
             retry,
+            deadline=self._create_deadline(final_config),
+            config=final_config,
         ):
             yield chunk
 
@@ -573,6 +754,9 @@ class BaseProvider:
                     async for event in provider_instance.ask_stream_events_async(query, **kwargs):
                         if isinstance(event, Error):
                             if not emitted and event.emitted_chunks == 0:
+                                if not self._is_retryable_error(event.error):
+                                    yield event
+                                    return
                                 last_error = event
                                 break
                             yield event
@@ -584,6 +768,9 @@ class BaseProvider:
                 except Exception as error:
                     if emitted:
                         raise
+                    if not self._is_retryable_error(error):
+                        yield Error(error=error, emitted_chunks=0)
+                        return
                     last_error = Error(error=error, emitted_chunks=0)
             if last_error is not None:
                 yield last_error
@@ -602,6 +789,8 @@ class BaseProvider:
             async for event in self._aiter_with_retry(
                 lambda: self._send_request_stream_events_async(messages, final_config),
                 retry,
+                deadline=self._create_deadline(final_config),
+                config=final_config,
             ):
                 if isinstance(event, TextDelta):
                     emitted_chunks += 1
@@ -631,14 +820,59 @@ class BaseProvider:
             | {"strict_options", "providers", "fallback"},
             strict,
         )
+        if options.get("image") is not None:
+            raise MediaTypeNotSupportedError(
+                "Image input is not supported by the public ask() API yet."
+            )
+        output_type = options.get("output_type")
+        if output_type not in (None, "text", "image", "audio"):
+            raise ValueError(f"Unsupported output_type: {output_type!r}.")
+        if output_type == "image" and not self.capabilities().image_generation:
+            raise MediaTypeNotSupportedError(
+                f"{self.__class__.__name__} does not support image generation."
+            )
+        if output_type == "audio" and not self.capabilities().audio_generation:
+            raise MediaTypeNotSupportedError(
+                f"{self.__class__.__name__} does not support audio generation."
+            )
         request_config = AdvancedConfig(**options)
         final_config = self.config.merge(request_config)
 
         # Ensure timeout has a default
         timeout = options.get('timeout', final_config.extra.get('timeout', 30))
         final_config.extra['timeout'] = float(timeout) if timeout is not None else 30.0
+        total_timeout = options.get(
+            "total_timeout",
+            final_config.extra.get("total_timeout"),
+        )
+        if total_timeout is not None:
+            total_timeout = float(total_timeout)
+            if not math.isfinite(total_timeout) or total_timeout <= 0:
+                raise ValueError("total_timeout must be a finite positive number.")
+            final_config.extra["total_timeout"] = total_timeout
 
         return final_config
+
+    @staticmethod
+    def _create_deadline(config: AdvancedConfig) -> Optional[float]:
+        total_timeout = config.extra.get("total_timeout")
+        if total_timeout is None:
+            return None
+        return time.monotonic() + float(total_timeout)
+
+    @staticmethod
+    def _apply_deadline(config: AdvancedConfig, deadline: Optional[float]) -> float:
+        if deadline is None:
+            return float("inf")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ProviderTimeoutError("Total request deadline exceeded.")
+        configured_timeout = config.extra.get("timeout")
+        if configured_timeout is None:
+            config.extra["timeout"] = remaining
+        else:
+            config.extra["timeout"] = min(float(configured_timeout), remaining)
+        return remaining
 
     def _prepare_messages(self, query: str, config: AdvancedConfig) -> list[dict[str, str]]:
         """Build the messages list from query, persona, and config."""
@@ -678,23 +912,47 @@ class BaseProvider:
 
     # ─── Retry Logic ────────────────────────────────────────
 
-    def _iter_with_retry(self, iterator_factory, retry: int):
+    def _iter_with_retry(
+        self,
+        iterator_factory,
+        retry: int,
+        deadline: Optional[float] = None,
+        config: Optional[AdvancedConfig] = None,
+    ):
+        if retry < 0:
+            raise ValueError("retry must be non-negative.")
+        if deadline is None and config is not None:
+            deadline = self._create_deadline(config)
         attempts = 0
         self._retry_count = 0
         while True:
             emitted = False
+            iterator = None
             try:
-                for item in iterator_factory():
+                if config is not None:
+                    self._apply_deadline(config, deadline)
+                iterator = iter(iterator_factory())
+                while True:
+                    if config is not None:
+                        self._apply_deadline(config, deadline)
+                    try:
+                        item = next(iterator)
+                    except StopIteration:
+                        break
+                    if config is not None:
+                        self._apply_deadline(config, deadline)
                     emitted = True
                     yield item
                 self._retry_count = attempts
                 return
             except Exception as error:
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise ProviderTimeoutError("Total request deadline exceeded.") from error
                 if emitted or attempts >= retry or not self._is_retryable_error(error):
                     raise
                 attempts += 1
                 self._retry_count = attempts
-                delay = min(2 ** attempts + random.uniform(0, 1), 30)
+                delay = _retry_delay(error, attempts)
                 logger.warning(
                     "Transient streaming error (%s). Retrying in %.1fs... (%d/%d)",
                     error.__class__.__name__,
@@ -702,25 +960,65 @@ class BaseProvider:
                     attempts,
                     retry,
                 )
+                if config is not None:
+                    remaining = self._apply_deadline(config, deadline)
+                    if delay >= remaining:
+                        time.sleep(remaining)
+                        raise ProviderTimeoutError("Total request deadline exceeded.") from error
                 time.sleep(delay)
+            finally:
+                close = getattr(iterator, "close", None)
+                if close is not None:
+                    close()
 
-    async def _aiter_with_retry(self, iterator_factory, retry: int):
+    async def _aiter_with_retry(
+        self,
+        iterator_factory,
+        retry: int,
+        deadline: Optional[float] = None,
+        config: Optional[AdvancedConfig] = None,
+    ):
+        if retry < 0:
+            raise ValueError("retry must be non-negative.")
+        if deadline is None and config is not None:
+            deadline = self._create_deadline(config)
         attempts = 0
         self._retry_count = 0
         while True:
             emitted = False
+            iterator = None
             try:
-                async for item in iterator_factory():
+                if config is not None:
+                    self._apply_deadline(config, deadline)
+                iterator = aiter(iterator_factory())
+                while True:
+                    if config is not None:
+                        remaining = self._apply_deadline(config, deadline)
+                    else:
+                        remaining = float("inf")
+                    try:
+                        if deadline is None:
+                            item = await anext(iterator)
+                        else:
+                            item = await asyncio.wait_for(anext(iterator), timeout=remaining)
+                    except StopAsyncIteration:
+                        break
+                    except asyncio.TimeoutError as timeout_error:
+                        raise ProviderTimeoutError(
+                            "Total request deadline exceeded."
+                        ) from timeout_error
                     emitted = True
                     yield item
                 self._retry_count = attempts
                 return
             except Exception as error:
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise ProviderTimeoutError("Total request deadline exceeded.") from error
                 if emitted or attempts >= retry or not self._is_retryable_error(error):
                     raise
                 attempts += 1
                 self._retry_count = attempts
-                delay = min(2 ** attempts + random.uniform(0, 1), 30)
+                delay = _retry_delay(error, attempts)
                 logger.warning(
                     "Transient async streaming error (%s). Retrying in %.1fs... (%d/%d)",
                     error.__class__.__name__,
@@ -728,17 +1026,40 @@ class BaseProvider:
                     attempts,
                     retry,
                 )
+                if config is not None:
+                    remaining = self._apply_deadline(config, deadline)
+                    if delay >= remaining:
+                        await asyncio.sleep(remaining)
+                        raise ProviderTimeoutError("Total request deadline exceeded.") from error
                 await asyncio.sleep(delay)
+            finally:
+                close = getattr(iterator, "aclose", None)
+                if close is not None:
+                    await close()
 
-    def _execute_with_retry(self, func, messages, config, output_type, retry):
+    def _execute_with_retry(
+        self,
+        func,
+        messages,
+        config,
+        output_type,
+        retry,
+        deadline: Optional[float] = None,
+    ):
         """Execute a sync function with exponential backoff + jitter."""
+        if retry < 0:
+            raise ValueError("retry must be non-negative.")
+        if deadline is None:
+            deadline = self._create_deadline(config)
         attempts = 0
         last_error = None
         self._retry_count = 0
 
         while attempts <= retry:
             try:
+                self._apply_deadline(config, deadline)
                 response = func(messages, config, output_type)
+                self._apply_deadline(config, deadline)
                 self._retry_count = attempts
                 return response
             except Exception as e:
@@ -746,11 +1067,18 @@ class BaseProvider:
                 if self._is_retryable_error(e) and attempts < retry:
                     attempts += 1
                     self._retry_count = attempts
-                    delay = min(2 ** attempts + random.uniform(0, 1), 30)
+                    delay = _retry_delay(e, attempts)
                     logger.warning(
                         "Transient error (%s). Retrying in %.1fs... (%d/%d)",
                         e.__class__.__name__, delay, attempts, retry
                     )
+                    try:
+                        remaining = self._apply_deadline(config, deadline)
+                    except ProviderTimeoutError as timeout_error:
+                        raise timeout_error from e
+                    if delay >= remaining:
+                        time.sleep(remaining)
+                        raise ProviderTimeoutError("Total request deadline exceeded.") from e
                     time.sleep(delay)
                 else:
                     raise
@@ -758,27 +1086,58 @@ class BaseProvider:
         from .exceptions import AskAINetworkError
         raise AskAINetworkError(f"Request failed after {retry} retries. Last error: {last_error}")
 
-    async def _execute_with_retry_async(self, func, messages, config, output_type, retry):
+    async def _execute_with_retry_async(
+        self,
+        func,
+        messages,
+        config,
+        output_type,
+        retry,
+        deadline: Optional[float] = None,
+    ):
         """Execute an async function with exponential backoff + jitter."""
+        if retry < 0:
+            raise ValueError("retry must be non-negative.")
+        if deadline is None:
+            deadline = self._create_deadline(config)
         attempts = 0
         last_error = None
         self._retry_count = 0
 
         while attempts <= retry:
             try:
-                response = await func(messages, config, output_type)
+                remaining = self._apply_deadline(config, deadline)
+                if deadline is None:
+                    response = await func(messages, config, output_type)
+                else:
+                    response = await asyncio.wait_for(
+                        func(messages, config, output_type),
+                        timeout=remaining,
+                    )
+                self._apply_deadline(config, deadline)
                 self._retry_count = attempts
                 return response
+            except asyncio.TimeoutError as timeout_error:
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise ProviderTimeoutError("Total request deadline exceeded.") from timeout_error
+                raise
             except Exception as e:
                 last_error = e
                 if self._is_retryable_error(e) and attempts < retry:
                     attempts += 1
                     self._retry_count = attempts
-                    delay = min(2 ** attempts + random.uniform(0, 1), 30)
+                    delay = _retry_delay(e, attempts)
                     logger.warning(
                         "Transient error (%s). Retrying in %.1fs... (%d/%d)",
                         e.__class__.__name__, delay, attempts, retry
                     )
+                    try:
+                        remaining = self._apply_deadline(config, deadline)
+                    except ProviderTimeoutError as timeout_error:
+                        raise timeout_error from e
+                    if delay >= remaining:
+                        await asyncio.sleep(remaining)
+                        raise ProviderTimeoutError("Total request deadline exceeded.") from e
                     await asyncio.sleep(delay)
                 else:
                     raise
@@ -823,10 +1182,70 @@ class BaseProvider:
 
     async def _send_request_stream_async(self, messages: list[dict[str, str]], config: AdvancedConfig) -> AsyncIterator[str]:
         """Async streaming — subclasses should override for native async."""
-        # Default fallback: wrap sync stream
         loop = asyncio.get_running_loop()
-        for chunk in await loop.run_in_executor(None, lambda: list(self._send_request_stream(messages, config))):
-            yield chunk
+        items: asyncio.Queue[tuple[str, Any]] = asyncio.Queue(maxsize=1)
+        stop = threading.Event()
+        sentinel = object()
+
+        def publish(item: tuple[str, Any]) -> bool:
+            coroutine = items.put(item)
+            try:
+                future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+            except RuntimeError:
+                coroutine.close()
+                return False
+            while not stop.is_set():
+                try:
+                    future.result(timeout=0.05)
+                    return True
+                except FutureTimeoutError:
+                    continue
+                except FutureCancelledError:
+                    return False
+            future.cancel()
+            return False
+
+        def produce() -> None:
+            iterator = None
+            failure = None
+            try:
+                iterator = iter(self._send_request_stream(messages, config))
+                while not stop.is_set():
+                    try:
+                        chunk = next(iterator)
+                    except StopIteration:
+                        break
+                    if not publish(("item", chunk)):
+                        break
+            except Exception as error:
+                failure = error
+            finally:
+                close = getattr(iterator, "close", None)
+                if close is not None:
+                    try:
+                        close()
+                    except Exception as error:
+                        if failure is None:
+                            failure = error
+                if not stop.is_set():
+                    if failure is not None:
+                        publish(("error", failure))
+                    else:
+                        publish(("done", sentinel))
+
+        worker = threading.Thread(target=produce, name="ask-ai-sync-stream", daemon=True)
+        worker.start()
+        try:
+            while True:
+                kind, value = await items.get()
+                if kind == "done":
+                    return
+                if kind == "error":
+                    raise value
+                yield value
+        finally:
+            stop.set()
+            await asyncio.to_thread(worker.join, 0.1)
 
     async def _send_request_stream_events_async(
         self, messages: list[dict[str, str]], config: AdvancedConfig
