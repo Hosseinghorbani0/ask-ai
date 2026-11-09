@@ -2,6 +2,7 @@
 
 from ask_ai.base import BaseProvider
 from ask_ai.events import Completed, Error, TextDelta, ToolCall, UsageUpdate
+from ask_ai.exceptions import ProviderTimeoutError
 
 
 class EventProvider(BaseProvider):
@@ -86,7 +87,7 @@ def test_sync_event_fallback_advances_after_pre_output_error():
 
         def ask_stream_events(self, query, **kwargs):
             self.calls += 1
-            yield Error(RuntimeError("before first event"), emitted_chunks=0)
+            yield Error(ProviderTimeoutError("before first event"), emitted_chunks=0)
 
     class SuccessfulProvider:
         def __init__(self):
@@ -113,7 +114,7 @@ def test_async_event_fallback_advances_after_pre_output_error():
 
         async def ask_stream_events_async(self, query, **kwargs):
             self.calls += 1
-            yield Error(RuntimeError("before first event"), emitted_chunks=0)
+            yield Error(ProviderTimeoutError("before first event"), emitted_chunks=0)
 
     class SuccessfulProvider:
         def __init__(self):
