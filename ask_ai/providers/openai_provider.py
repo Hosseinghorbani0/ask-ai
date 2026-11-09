@@ -35,7 +35,7 @@ class OpenAIProvider(BaseProvider):
             tool_calls=True,
             image_generation=True,
             audio_generation=True,
-            vision=True,
+            vision=False,
         )
 
     def __init__(self, api_key: str = None, model: str = None, **kwargs):
@@ -62,6 +62,7 @@ class OpenAIProvider(BaseProvider):
                 timeout=self.config.extra.get("timeout", 30.0),
                 max_retries=0,
             )
+        self._check_async_client_loop()
         return self._async_client
 
     def _get_api_key_env_var(self):
@@ -112,10 +113,14 @@ class OpenAIProvider(BaseProvider):
             kwargs = self._build_chat_kwargs(messages, config, include_tools=False)
             kwargs["stream"] = True
             stream = self.client.chat.completions.create(**kwargs)
-
-            for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+            try:
+                for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+            finally:
+                close = getattr(stream, "close", None)
+                if callable(close):
+                    close()
 
         except Exception as e:
             raise map_provider_exception(e, self.provider_name, "streaming") from e
@@ -127,24 +132,30 @@ class OpenAIProvider(BaseProvider):
             kwargs["stream_options"] = {"include_usage": True}
             stream = self.client.chat.completions.create(**kwargs)
             index = 0
-            for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield TextDelta(text=chunk.choices[0].delta.content, index=index)
-                    index += 1
-                usage = usage_from_fields(
-                    getattr(chunk, "usage", None),
-                    "prompt_tokens",
-                    "completion_tokens",
-                    "total_tokens",
-                )
-                if usage is not None:
-                    yield UsageUpdate(**usage.__dict__)
+            try:
+                for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield TextDelta(text=chunk.choices[0].delta.content, index=index)
+                        index += 1
+                    usage = usage_from_fields(
+                        getattr(chunk, "usage", None),
+                        "prompt_tokens",
+                        "completion_tokens",
+                        "total_tokens",
+                    )
+                    if usage is not None:
+                        yield UsageUpdate(**usage.__dict__)
+            finally:
+                close = getattr(stream, "close", None)
+                if callable(close):
+                    close()
         except Exception as e:
             raise map_provider_exception(e, self.provider_name, "streaming") from e
 
     # ─── Async ─────────────────────────────────────────────
 
     async def _send_request_async(self, messages: list[dict[str, str]], config: AdvancedConfig, output_type: str = None) -> Response:
+        self._check_async_client_loop()
         if output_type == "image":
             return await self._generate_image_async(messages, config)
         if output_type == "audio":
@@ -175,37 +186,48 @@ class OpenAIProvider(BaseProvider):
 
     async def _send_request_stream_async(self, messages: list[dict[str, str]], config: AdvancedConfig) -> AsyncIterator[str]:
         """Async streaming — yields text chunks."""
+        self._check_async_client_loop()
         try:
             kwargs = self._build_chat_kwargs(messages, config, include_tools=False)
             kwargs["stream"] = True
             stream = await self.async_client.chat.completions.create(**kwargs)
-
-            async for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+            try:
+                async for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+            finally:
+                close = getattr(stream, "aclose", None)
+                if callable(close):
+                    await close()
 
         except Exception as e:
             raise map_provider_exception(e, self.provider_name, "streaming") from e
 
     async def _send_request_stream_events_async(self, messages, config):
+        self._check_async_client_loop()
         try:
             kwargs = self._build_chat_kwargs(messages, config, include_tools=False)
             kwargs["stream"] = True
             kwargs["stream_options"] = {"include_usage": True}
             stream = await self.async_client.chat.completions.create(**kwargs)
             index = 0
-            async for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield TextDelta(text=chunk.choices[0].delta.content, index=index)
-                    index += 1
-                usage = usage_from_fields(
-                    getattr(chunk, "usage", None),
-                    "prompt_tokens",
-                    "completion_tokens",
-                    "total_tokens",
-                )
-                if usage is not None:
-                    yield UsageUpdate(**usage.__dict__)
+            try:
+                async for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield TextDelta(text=chunk.choices[0].delta.content, index=index)
+                        index += 1
+                    usage = usage_from_fields(
+                        getattr(chunk, "usage", None),
+                        "prompt_tokens",
+                        "completion_tokens",
+                        "total_tokens",
+                    )
+                    if usage is not None:
+                        yield UsageUpdate(**usage.__dict__)
+            finally:
+                close = getattr(stream, "aclose", None)
+                if callable(close):
+                    await close()
         except Exception as e:
             raise map_provider_exception(e, self.provider_name, "streaming") from e
 
