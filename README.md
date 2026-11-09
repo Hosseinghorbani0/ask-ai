@@ -1,394 +1,232 @@
 # ask-ai
 
-<p align="center">
-  🌍 <b>Readme:</b>
-  <a href="README.md"><img src="https://flagcdn.com/20x15/us.png" alt="English"> English</a> · 
-  <a href="docs/README_fa.md"><img src="https://flagcdn.com/20x15/ir.png" alt="Persian"> فارسی</a> · 
-  <a href="docs/README_zh.md"><img src="https://flagcdn.com/20x15/cn.png" alt="Chinese"> 中文</a> · 
-  <a href="docs/README_tr.md"><img src="https://flagcdn.com/20x15/tr.png" alt="Turkish"> Türkçe</a> · 
-  <a href="docs/README_ar.md"><img src="https://flagcdn.com/20x15/sa.png" alt="Arabic"> العربية</a> · 
-  <a href="docs/README_ru.md"><img src="https://flagcdn.com/20x15/ru.png" alt="Russian"> Русский</a> · 
-  <a href="docs/README_es.md"><img src="https://flagcdn.com/20x15/es.png" alt="Spanish"> Español</a> · 
-  <a href="docs/README_ja.md"><img src="https://flagcdn.com/20x15/jp.png" alt="Japanese"> 日本語</a>
-</p>
-
-
-<p align="center">
-  <img src="assets/banner.svg" alt="ask-ai animated banner" width="100%">
-</p>
-
-<p align="center">
-  <b>A minimal Python SDK to switch between LLM providers in one line.</b><br/>
-  No frameworks. No servers. No overengineering.
-</p>
-
-
 [![PyPI version](https://img.shields.io/pypi/v/askai-python.svg)](https://pypi.org/project/askai-python/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python versions](https://img.shields.io/pypi/pyversions/askai-python.svg)](https://pypi.org/project/askai-python/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+**A small, typed Python SDK for calling several LLM providers through a consistent API.**
+Use it from scripts and Python applications without adopting a larger orchestration framework.
 
+`ask-ai` is a client library, not a hosted service or gateway. You create a provider client, call it synchronously or asynchronously, and receive a common `Response` object. Provider SDKs are optional; install only the ones you use.
 
----
+## Documentation languages
 
-## ⚡ Quick Start (5 seconds)
+[English](README.md) · [العربية](docs/README_ar.md) · [فارسی](docs/README_fa.md) · [Español](docs/README_es.md) · [日本語](docs/README_ja.md) · [Русский](docs/README_ru.md) · [Türkçe](docs/README_tr.md) · [中文](docs/README_zh.md)
+
+## Contents
+
+- [Features](#features)
+- [Requirements and installation](#requirements-and-installation)
+- [Providers](#providers)
+- [Quick start](#quick-start)
+- [Public API](#public-api)
+- [Request options](#request-options)
+- [Retries, fallback, and routing](#retries-fallback-and-routing)
+- [Structured output](#structured-output)
+- [Streaming and asynchronous use](#streaming-and-asynchronous-use)
+- [Media generation and secure downloads](#media-generation-and-secure-downloads)
+- [Conversation sessions and client lifecycle](#conversation-sessions-and-client-lifecycle)
+- [Capabilities and observability](#capabilities-and-observability)
+- [Architecture](#architecture)
+- [CLI](#command-line-interface)
+- [Compatibility and troubleshooting](#compatibility-and-troubleshooting)
+- [Contributing, support, and license](#contributing-support-and-license)
+
+## Features
+
+- Consistent `ask`, `ask_async`, `ask_stream`, and `ask_stream_async` APIs.
+- Optional provider fallback and policy-based routing.
+- Retry handling for transient failures, with per-call and total deadlines.
+- Typed response metadata, normalized token usage, and optional observability hooks.
+- JSON and validated structured responses for supported providers.
+- Optional in-memory conversation sessions.
+- OpenAI-compatible Chat Completions endpoints, including local servers.
+- Secure, policy-controlled media downloads.
+
+The public request API currently sends text; provider capability metadata does not imply vision input support. Tool-call execution and persistent conversation storage are not provided.
+
+## Requirements and installation
+
+- Python 3.10+ is required.
+- Core package dependencies are empty. Provider SDKs and media/structured-output libraries are optional extras.
+
+Install the base package:
 
 ```bash
-pip install "askai-python[openai,groq]"
+python -m pip install askai-python
 ```
 
-Provider SDKs are optional dependencies. Install the extras you need:
+Install only the provider SDKs you need:
 
-- `pip install "askai-python[openai]"` for OpenAI, Azure, and OpenRouter.
-- `pip install "askai-python[anthropic]"`, `pip install "askai-python[google]"`,
-  or `pip install "askai-python[groq]"` for those providers.
-- `pip install "askai-python[all]"` for every provider SDK.
+```bash
+python -m pip install "askai-python[openai,groq]"   # OpenAI and Groq
+python -m pip install "askai-python[openai]"       # OpenAI, Azure OpenAI, OpenRouter, compatible endpoints
+python -m pip install "askai-python[anthropic]"
+python -m pip install "askai-python[google]"
+python -m pip install "askai-python[groq]"
+python -m pip install "askai-python[structured]"   # Pydantic and jsonschema
+python -m pip install "askai-python[media]"        # Pillow
+python -m pip install "askai-python[httpx]"        # secure media downloads
+python -m pip install "askai-python[all]"
+```
 
-Python 3.10 or newer is required.
+Set credentials in your environment or pass `api_key=` when constructing a provider. Avoid hard-coding secrets in source code.
+
+## Providers
+
+| Provider | Import | Extra | Credential environment variable | Default model |
+|---|---|---|---|---|
+| OpenAI | `OpenAI` | `openai` | `OPENAI_API_KEY` | `gpt-4o` |
+| Anthropic | `Anthropic` | `anthropic` | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` |
+| Google Gen AI | `Google` | `google` | `GOOGLE_API_KEY` | `gemini-2.0-flash` |
+| Groq | `Groq` | `groq` | `GROQ_API_KEY` | `llama-3.3-70b-versatile` |
+| Azure OpenAI | `Azure` | `openai` | `AZURE_OPENAI_API_KEY` | Deployment name required |
+| OpenRouter | `OpenRouter` | `openai` | `OPENROUTER_API_KEY` | `openai/gpt-4o` |
+| OpenAI-compatible | `OpenAICompatibleProvider` | `openai` | None (optional) | Required at construction |
+
+Azure also requires `AZURE_OPENAI_ENDPOINT`; its deployment can be provided as `model=` or through `AZURE_OPENAI_DEPLOYMENT_NAME`. `AZURE_OPENAI_API_VERSION` defaults to `2024-06-01`. The compatible provider requires an absolute HTTP(S) `base_url` and a model; `api_key` may be omitted for local endpoints.
+
+`capabilities()` returns declared support for text, streaming, async streaming, structured output, tool calls, image generation, audio generation, and vision. These are provider declarations, not a guarantee that every model or account enables the feature. In particular, tool-call execution and vision input are not exposed as general request features.
+
+## Quick start
+
+```python
+from ask_ai import OpenAI
+
+client = OpenAI()  # Reads OPENAI_API_KEY
+response = client.ask("Explain what a Python context manager does.")
+print(response.text)
+```
+
+Switch providers by using a different provider class:
+
+```python
+from ask_ai import Anthropic, Google, Groq
+
+answer = Groq().ask("Give me one useful shell tip.")
+print(answer.text)
+```
+
+## Public API
+
+| Method | Result | Description |
+|---|---|---|
+| `provider.ask(query, **options)` | `Response` | Synchronous request |
+| `await provider.ask_async(query, **options)` | `Response` | Native asynchronous request |
+| `provider.ask_stream(query, **options)` | Iterator of strings | Synchronous text stream |
+| `async for chunk in provider.ask_stream_async(query, **options)` | Async iterator of strings | Asynchronous text stream |
+| `provider.ask_stream_events(query, **options)` | Iterator of event objects | Typed synchronous stream |
+| `provider.ask_stream_events_async(query, **options)` | Async iterator of event objects | Typed asynchronous stream |
+
+The `Response` provides `text`, unmodified `raw`, parsed `json`, `parsed`/`pydantic` when `response_model` was requested, optional `media`, `usage`, and `metadata`. `response.json` parses the response text; use `json=True` to request JSON-style output, or `response_model=...` when validation is required.
+
+## Request options
+
+Pass options to a request or set defaults using `provider.advanced(...)`. Options are merged, with request options taking precedence.
+
+| Option | Purpose |
+|---|---|
+| `temperature`, `max_tokens`, `top_p` | Common generation controls |
+| `frequency_penalty`, `presence_penalty`, `stop` | Provider-supported sampling controls |
+| `system_message` (aliases: `system`, `prompt`) | System instruction |
+| `timeout` | Timeout for an individual provider call (default 30 seconds in provider clients) |
+| `total_timeout` | Deadline for the complete operation, including retries |
+| `retry` | Additional retry count; defaults to 2 (up to 3 attempts) |
+| `json=True` | Request JSON-formatted output and allow parsing via `response.json` |
+| `response_model`, `validation_retries` | Parse and validate a supported structured model |
+| `output_type` | Request supported generated `image` or `audio` output |
+| `clean`, `strip`, `code` | Apply text cleanup/extraction when reading `response.text` |
+| `strict_options=True` | Raise on unknown options instead of warning |
+
+Provider/model support for individual options varies. Unknown options warn by default; strict mode raises `ValueError`. The deprecated `safe_mode` option has no defined behavior. Unsupported output types raise rather than being silently ignored.
+
+```python
+response = client.ask(
+    "Summarize this topic in three bullets.",
+    temperature=0.2,
+    max_tokens=250,
+    system_message="Be concise and factual.",
+    total_timeout=20,
+)
+```
+
+## Retries, fallback, and routing
+
+Requests default to two retries for retryable transient failures (up to three attempts). Invalid requests, authentication failures, and other non-retryable errors are not retried. `Retry-After` is honored within a 30-second clamp. `timeout` limits an individual call; `total_timeout` bounds the complete retry operation.
+
+Fallback can try provider classes or instances:
 
 ```python
 from ask_ai import OpenAI, Groq
 
-# Auto-detects OPENAI_API_KEY from environment
-OpenAI().ask("Explain black holes like I'm 5").text
-
-# Switch provider effortlessly
-Groq().ask("Explain black holes like I'm 5").text
+response = OpenAI().ask("Hello", providers=[OpenAI, Groq], retry=1)
 ```
 
----
-
-## 🧐 Why ask-ai?
-
-- **One function**: Just call `.ask()`
-- **Multiple providers**: OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter
-- **Zero config**: Keys are pulled from the environment automatically
-- **SDK-first, not a framework**: It stays out of your way.
-
-## 🚫 What this project is NOT
-
-> ❌ Not an AI framework  
-> ❌ Not an API gateway  
-> ❌ Not an agent memory system  
-
-It does one thing perfectly: **Simplifying the API call to LLMs.**
-
----
-
-## 🛠️ Advanced Usage
-
-### 🧰 Developer QoL Utilities (Auto-Parsing)
-
-<p align="center">
-  <img src="assets/features.svg" alt="ask-ai features parsing banner" width="100%">
-</p>
-Stop writing Regex to clean up model outputs! `ask-ai` comes with built-in text processing flags:
+The fallback chain advances only for retryable provider failures. `Router` provides policy-based selection and an overall `max_attempts` budget:
 
 ```python
+from ask_ai import OpenAI, Groq, Router
+
+router = Router([OpenAI(), Groq()], max_attempts=2)
+response = router.ask("Hello", retry=1)
+```
+
+Retries and fallbacks can multiply requests and associated provider charges. Set a small retry count and a total deadline for cost- and latency-sensitive work. A stream is not retried after chunks have already been yielded.
+
+## Structured output
+
+Use `response_model` with supported Pydantic models, dataclasses, `TypedDict`, or JSON Schema definitions. The request returns a regular `Response`; access the validated result through `.parsed`:
+
+```python
+from pydantic import BaseModel
 from ask_ai import OpenAI
-ai = OpenAI()
 
-# 1. Clean Markdown (Removes ```json and ``` tags)
-# Perfect for extracting raw data from models that wrap everything in markdown
-clean_text = ai.ask("Write JSON", clean=True).text
+class Summary(BaseModel):
+    title: str
+    points: list[str]
 
-# 2. Extract Code (Returns ONLY the code block, ignores conversational filler)
-# Great for automation pipelines
-code = ai.ask("Write a python ping script", code=True).text
-
-# 3. Strip Tags (Removes <think> blocks and HTML)
-# Essential for reasoning models like DeepSeek-R1
-answer_only = ai.ask("What is 1+1?", strip=True).text
-
-# 4. Enforce & Parse JSON (Directly returns a Parsed Python Dictionary)
-# Adds JSON instructions to the prompt and safely runs json.loads()
-data_dict = ai.ask("Extract user info", json=True).json
-print(data_dict['name'])
-```
-
-### 🔄 Built-in Retries & Timeout (Resiliency)
-
-<p align="center">
-  <img src="assets/resiliency.svg" alt="ask-ai resiliency banner" width="100%">
-</p>
-Handle rate limits (`429`) and network drops automatically:
-
-```python
-from ask_ai import OpenAI
-ai = OpenAI()
-
-# Will retry up to 3 times on RateLimit/Network errors, with generic timeout
-response = ai.ask("Write a script", retry=3, timeout=10)
-```
-
-Requests default to `retry=2` (up to three attempts) for retryable timeout,
-connection, rate-limit (`429`), and server (`5xx`) errors. Authentication and
-invalid-request errors are not retried; use `retry=0` to disable retries.
-`timeout` bounds an individual provider call; `total_timeout` bounds the complete
-request, including retries and backoff. `Retry-After` is respected up to 30
-seconds.
-Streaming retries occur only before the first chunk/event, so already-emitted
-output is never duplicated.
-
-### System Configuration 
-Set system prompts and temperature directly:
-
-```python
-ai.advanced(
-    temperature=0.7,
-    prompt="You are a senior DevOps engineer."
+response = OpenAI().ask(
+    "Summarize the water cycle.",
+    response_model=Summary,
+    validation_retries=1,
 )
-
-print(ai.ask("How do I optimize a Dockerfile?").text)
+summary = response.parsed
+print(summary.title)
 ```
 
-Unknown option names produce a `UserWarning` with a spelling suggestion. Pass
-`strict_options=True` to a provider (or to an individual request) to raise a
-`ValueError` instead. `safe_mode` currently has no defined behavior and is
-deprecated; passing it emits a `DeprecationWarning`.
+Provider-side structured-output support differs. Validation is performed locally, and unsupported or invalid output raises a structured validation error rather than guaranteeing a provider-specific strict schema mode. Structured validation is not supported by session streaming methods.
 
----
+## Streaming and asynchronous use
 
-### 🚀 Async Support (FastAPI / Aiogram)
+```python
+for chunk in client.ask_stream("Write a short greeting."):
+    print(chunk, end="", flush=True)
+```
 
-`ask-ai` works perfectly in asynchronous environments:
+Async methods use provider async clients:
 
 ```python
 import asyncio
 from ask_ai import OpenAI
 
 async def main():
-    ai = OpenAI()
-    # Runs non-blocking in your event loop
-    response = await ai.ask_async("What is the capital of France?")
+    client = OpenAI()
+    response = await client.ask_async("Give me a concise definition of an API.")
     print(response.text)
+    async for chunk in client.ask_stream_async("Now say it in five words."):
+        print(chunk, end="", flush=True)
+    await client.aclose()
 
 asyncio.run(main())
 ```
 
----
+Typed stream events include `TextDelta`, `UsageUpdate`, `Completed`, and `Error`. `ToolCall` is exported as an event type, but current provider adapters do not emit tool-call events. Use `ask_stream_events` or `ask_stream_events_async` when event objects are preferable to text chunks. Catch cancellation and provider exceptions in the calling application as appropriate.
 
-### 🌊 Streaming Support (Sync & Async)
+## Media generation and secure downloads
 
-Stream responses token-by-token easily:
+Some provider implementations support generated image or audio output through `output_type="image"` or `output_type="audio"`. Availability depends on provider and model; inspect `capabilities()` and provider documentation. The request API does not currently accept image input for vision.
 
-```python
-from ask_ai import OpenAI
-
-ai = OpenAI()
-
-# Sync Streaming
-for chunk in ai.ask_stream("Write a short story about a blue dragon"):
-    print(chunk, end="", flush=True)
-
-# Async Streaming
-async def stream_example():
-    async for chunk in ai.ask_stream_async("Write a short story"):
-        print(chunk, end="", flush=True)
-```
-
----
-
-### 🎨 Media Generation (Image & Audio)
-
-Generate images or speech with compatible providers:
-
-```python
-from ask_ai import OpenAI
-
-ai = OpenAI()
-
-# Generate an Image (DALL-E)
-img_response = ai.ask("A majestic lion in a neon city", output_type="image")
-img_response.save("lion.png")
-
-# Generate Speech (TTS)
-audio_response = ai.ask("Hello, this is a generated voice.", output_type="audio")
-audio_response.save("welcome.mp3")
-```
-
----
-
-### 🔗 Provider Fallback
-
-Never experience downtime by supplying alternative fallback providers:
-
-```python
-from ask_ai import OpenAI, Groq
-
-ai = OpenAI()
-
-# If OpenAI fails or rate-limits, it automatically switches to Groq
-response = ai.ask("Explain quantum physics", providers=[ai, Groq])
-print(response.text)
-```
-
----
-
-### 📋 Structured Output (Pydantic Support)
-
-Force LLMs to strictly respond matching a Pydantic schema:
-
-```python
-from pydantic import BaseModel
-from ask_ai import OpenAI
-
-class User(BaseModel):
-    name: str
-    age: int
-
-ai = OpenAI()
-response = ai.ask("Extract name: Alice is 30 years old.", response_model=User)
-
-user = response.pydantic
-print(user.name)  # "Alice"
-print(user.age)   # 30
-```
-
-### ✅ Validated Structured Responses
-
-Structured responses support Pydantic models, dataclasses, `TypedDict`, and JSON
-Schema dictionaries. The raw provider text remains available separately:
-
-```python
-from dataclasses import dataclass
-from ask_ai import OpenAI
-
-@dataclass
-class User:
-    name: str
-    age: int
-
-response = OpenAI().ask(
-    "Extract: Alice is 30.",
-    response_model=User,
-    validation_retries=2,
-)
-print(response.raw)
-print(response.parsed.name)
-```
-
-For supported schemas, `response_model` also requests native JSON Schema output
-from OpenAI/Azure, Anthropic, Groq, Google, and OpenRouter. When an adapter
-receives a clear unsupported-schema response (HTTP 400/422), it retries once
-without the native schema and keeps local validation enabled. Authentication,
-rate-limit, and server errors are propagated, not retried as prompt-only
-fallbacks. Schemas that cannot be represented in the provider's strict schema
-format use prompt instructions and local validation directly. Provider/model
-support varies; these request parameters have mock-based tests but have not
-been verified against live APIs.
-
-Provider parameters follow their documented APIs:
-[OpenAI Chat Completions](https://developers.openai.com/api/docs/guides/structured-outputs),
-[Azure OpenAI](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/structured-outputs),
-[Anthropic](https://platform.claude.com/docs/en/build-with-claude/structured-outputs),
-[Groq](https://console.groq.com/docs/structured-outputs),
-[Google GenAI](https://ai.google.dev/gemini-api/docs/structured-output), and
-[OpenRouter Chat Completions](https://openrouter.ai/docs/guides/features/structured-outputs).
-
-### Streaming Events
-
-Use typed events for text, completion, and errors while keeping the legacy
-`ask_stream()` API unchanged:
-
-```python
-from ask_ai import Completed, OpenAI, TextDelta
-
-for event in OpenAI().ask_stream_events("Tell me a story"):
-    if isinstance(event, TextDelta):
-        print(event.text, end="")
-    elif isinstance(event, Completed):
-        print("\nDone")
-```
-
-`UsageUpdate` events are emitted when an adapter receives usage in its stream.
-`ToolCall` is a reserved event type and is not emitted by the current adapters.
-Streaming usage extraction is mock-tested and has not been verified against
-live provider APIs.
-
-### 📊 Observability
-
-Attach optional middleware to receive provider, model, latency, retry, and
-provider-reported token usage. Usage field names are normalized to
-`input_tokens`, `output_tokens`, and `total_tokens`. Estimated cost is only
-calculated when usage is available and pricing for the model is supplied;
-missing usage never produces a cost estimate. Mock tests cover usage extraction
-for supported adapters; live provider APIs have not been verified. On failures,
-middleware emits a `failed` event with `failure_reason`, then the exception is
-propagated:
-
-```python
-from ask_ai import Observability, OpenAI
-
-ai = OpenAI().use(Observability(on_event=print))
-response = ai.ask("Explain tracing")
-print(response.metadata.latency_ms)
-print(response.metadata.usage)
-```
-
-### Provider Capabilities
-
-Inspect advisory capability metadata before selecting a provider:
-
-```python
-from ask_ai import OpenAI
-
-capabilities = OpenAI().capabilities()
-if capabilities.structured_output:
-    print("Structured output is available")
-```
-
-Capabilities are advisory provider-level metadata, not guarantees for every
-model.
-
-### Smart Router
-
-Route requests across providers using deterministic `cheapest`, `fastest`, or
-`most_reliable` policies. Supply static `profiles` for meaningful ordering:
-
-```python
-from ask_ai import Groq, OpenAI, Router
-
-openai = OpenAI()  # Requires OPENAI_API_KEY
-groq = Groq()  # Requires GROQ_API_KEY
-router = Router(
-    [openai, groq],
-    policy="fastest",
-    max_attempts=2,
-    profiles={
-        "OpenAIProvider": {"latency_ms": 100},
-        "GroqProvider": {"latency_ms": 50},
-    },
-)
-response = router.ask("Explain routing")
-```
-
-The router defaults `max_attempts` to the number of configured providers and
-disables each provider's internal retries while routing, so retry attempts do
-not multiply across fallback providers.
-
-### OpenAI-compatible servers
-
-Use the generic adapter for local or hosted endpoints implementing OpenAI Chat
-Completions. Features beyond text and streaming remain conservatively disabled.
-
-```python
-from ask_ai import OpenAICompatibleProvider
-
-local = OpenAICompatibleProvider(
-    base_url="http://localhost:8000/v1",
-    model="your-served-model",
-)
-response = local.ask("Hello")
-```
-
-### 🔒 Secure Media Downloads
-
-Provider media downloads can be constrained by HTTPS, host, detected MIME, size,
-and timeout policy. DNS results resolving to private, loopback, link-local, or
-reserved IP addresses are rejected by default. `allowed_hosts` is optional;
-set it for an explicit hostname allowlist. Only opt in to `allow_private=True`
-when downloading from trusted private-network hosts. Redirects are rejected:
+Secure media downloads require the optional `httpx` extra. By default, downloads require HTTPS, reject redirects and non-public DNS results, and enforce a 25 MiB limit and 30-second timeout. You may restrict MIME types and hosts:
 
 ```python
 from ask_ai import MediaPolicy, download_media
@@ -403,51 +241,77 @@ data = download_media(
 )
 ```
 
-### Conversation Sessions
+Only set `allow_private=True` for trusted private-network URLs. A media policy does not make arbitrary provider-generated URLs safe to use elsewhere.
 
-Create optional in-memory conversation state without changing the normal
-provider API:
+## Conversation sessions and client lifecycle
+
+`provider.session()` creates an optional in-memory conversation:
 
 ```python
-session = OpenAI().session(max_messages=20)
-session.ask("My name is Ada.")
-print(session.ask("What is my name?").text)
+with OpenAI() as client:
+    session = client.session(max_messages=20)
+    session.ask("My name is Ada.")
+    print(session.ask("What is my name?").text)
 ```
 
-Sessions support validated `response_model` requests for non-streaming calls.
-Structured validation is not available on streaming session methods.
-Concurrent sync requests serialize with one another, as do concurrent async
-requests. Do not mix sync and async operations concurrently on the same session.
-The current public request API does not accept image inputs; provider capability
-reports therefore keep `vision` disabled rather than implying images are sent.
-Provider clients can be deterministically released with `close()` /
-`aclose()` or sync/async context managers. An async provider client is bound to
-the first event loop that uses it; create a provider per loop.
+History is held in process memory and is not persisted. `max_messages` bounds retained messages by user/assistant pairs. Concurrent sync operations serialize separately from async operations; do not mix sync and async operations concurrently on one session.
 
----
+Providers support `close()`/`aclose()` and synchronous/asynchronous context managers. Close clients when finished, especially in long-running services. A cached async client is bound to the first event loop that uses it; use a provider instance per loop.
 
-## 🗺️ Roadmap
+## Capabilities and observability
 
-### 🚀 Roadmap 2.0 (Active)
-- [x] Provider Fallback chaining & Pydantic Structured Output support
-- [x] Multi-Modal Vision input (image to text) for all key providers
-- [ ] Native support for tools/function calling execution
-- [x] Optional in-memory session-based conversation management
+Use `provider.capabilities()` to inspect declared provider support. Attach an observability hook with `provider.use(Observability(...))` to receive request metadata such as provider, model, latency, retry count, and normalized token usage. Estimated cost is available only when pricing rates are supplied and usage is reported by the provider.
 
-### 🏁 Roadmap 1.0 (Completed)
-- ~~[x] OpenAI, Groq, Gemini, Anthropic, Azure, OpenRouter support~~
-- ~~[x] Text to Image (DALL-E) and Text to Audio~~
-- ~~[x] Automated Retry & Timeout controls~~
-- ~~[x] Async Support (`await ask_async`)~~
-- ~~[x] Streaming Support (`ask_stream` / `ask_stream_async`)~~
-- ~~[x] Provider Fallback (`ask(..., providers=[OpenAI, Groq])`)~~
-- ~~[x] Structured Output (Pydantic Support)~~
+```python
+from ask_ai import Observability, OpenAI
 
----
+events = []
+client = OpenAI()
+client.use(Observability(on_event=events.append))
+response = client.ask("Return one word.")
+print(response.metadata)
+```
 
-## 🔗 Important Links
+Avoid putting prompts, personal data, or credentials into your own telemetry handlers. Hook exceptions are isolated from the request path.
 
-- **PyPI**: [askai-python](https://pypi.org/project/askai-python/)
-- **GitHub Repository**: [Hosseinghorbani0/ask-ai](https://github.com/Hosseinghorbani0/ask-ai) (Star us! ⭐)
-- **Official Website**: [hosseinghorbani0.ir](https://hosseinghorbani0.ir/)
-- **Bug Tracker**: [Report an Issue](https://github.com/Hosseinghorbani0/ask-ai/issues)
+## Architecture
+
+`ask_ai` provides a shared provider base, provider-specific SDK adapters, a common `Response`, optional `Router` and `ConversationSession`, and utilities for structured output and media security. Provider SDKs are imported optionally, so importing the package does not require installing every integration. The library does not proxy requests through its own service.
+
+## Command-line interface
+
+The `ask-ai` command is installed with the package. It supports OpenAI, Groq, Google, OpenRouter, Azure, and Anthropic:
+
+```bash
+ask-ai --provider openai "Explain recursion in one sentence."
+ask-ai --provider groq --stream "List three Python tips."
+ask-ai --help
+```
+
+The CLI uses the selected provider's environment credentials. The generic OpenAI-compatible provider is available through the Python API, not the current CLI provider choices.
+
+## Compatibility and troubleshooting
+
+- **Python:** 3.10–3.13 are listed in package classifiers; the declared minimum is 3.10.
+- **Typing:** the distribution includes `ask_ai/py.typed`.
+- **Operating systems:** the package is pure Python; provider SDK support and network behavior depend on your platform and installed SDK.
+- **No SDK installed:** install the matching provider extra, for example `askai-python[openai]`.
+- **Missing credentials:** set the provider environment variable listed above, or pass `api_key=`.
+- **Azure initialization fails:** set `AZURE_OPENAI_ENDPOINT`, API key, and a deployment name/model.
+- **Unknown option warning:** check the spelling, or set `strict_options=True` to fail immediately.
+- **Async loop error:** do not reuse an async provider client across event loops; construct one provider per loop.
+- **Structured output invalid:** validate the model/schema and increase `validation_retries` only when another billed attempt is acceptable.
+- **Live provider behavior:** mock-based tests do not guarantee that a live provider accepts a model or option. Real-provider checks are optional and may incur charges.
+
+## Contributing, support, and license
+
+Bug reports and feature requests are welcome via the [issue tracker](https://github.com/Hosseinghorbani0/ask-ai/issues). For code contributions, open a focused pull request with tests and documentation updates for behavior changes. Run the project checks locally:
+
+```bash
+python -m pytest -q
+ruff check .
+```
+
+Review [CHANGELOG.md](CHANGELOG.md) for release history. Usage questions and bug reports should include a minimal reproducible example and omit API keys, personal data, and other secrets.
+
+Licensed under the [MIT License](LICENSE). See the [PyPI project page](https://pypi.org/project/askai-python/) and [GitHub repository](https://github.com/Hosseinghorbani0/ask-ai) for releases and project updates.

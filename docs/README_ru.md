@@ -1,123 +1,251 @@
-# askai-python 🚀
+# ask-ai
 
-<p align="center">
-  🌍 <b>Readme:</b>
-  <a href="../README.md"><img src="https://flagcdn.com/20x15/us.png" alt="English"> English</a> · 
-  <a href="README_fa.md"><img src="https://flagcdn.com/20x15/ir.png" alt="Persian"> فارسی</a> · 
-  <a href="README_zh.md"><img src="https://flagcdn.com/20x15/cn.png" alt="Chinese"> 中文</a> · 
-  <a href="README_tr.md"><img src="https://flagcdn.com/20x15/tr.png" alt="Turkish"> Türkçe</a> · 
-  <a href="README_ar.md"><img src="https://flagcdn.com/20x15/sa.png" alt="Arabic"> العربية</a> · 
-  <a href="README_ru.md"><img src="https://flagcdn.com/20x15/ru.png" alt="Russian"> Русский</a> · 
-  <a href="README_es.md"><img src="https://flagcdn.com/20x15/es.png" alt="Spanish"> Español</a> · 
-  <a href="README_ja.md"><img src="https://flagcdn.com/20x15/jp.png" alt="Japanese"> 日本語</a>
-</p>
+[![Версия PyPI](https://img.shields.io/pypi/v/askai-python.svg)](https://pypi.org/project/askai-python/)
+[![Версии Python](https://img.shields.io/pypi/pyversions/askai-python.svg)](https://pypi.org/project/askai-python/)
+[![Лицензия MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../LICENSE)
 
+**Небольшой типизированный Python SDK для вызова нескольких LLM-провайдеров через единый API.**
+Подходит для скриптов и Python-приложений без внедрения крупного фреймворка оркестрации.
 
-<p align="center">
-  <img src="../assets/banner.svg" alt="askai-python animated banner" width="100%">
-</p>
+`ask-ai` — клиентская библиотека, а не размещённый сервис или шлюз. Создайте клиент провайдера, вызывайте его синхронно или асинхронно и получайте общий объект `Response`. SDK провайдеров необязательны: устанавливайте только необходимые.
 
-<p align="center">
-  <b>Минималистичный Python SDK для переключения между AI-провайдерами одной строкой кода.</b><br/>
-  Никаких фреймворков. Никаких серверов. Никакой избыточности.
-</p>
+## Языки документации
 
-[![PyPI version](https://img.shields.io/pypi/v/askai-python.svg)](https://pypi.org/project/askai-python/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[English](../README.md) · [العربية](README_ar.md) · [فارسی](README_fa.md) · [Español](README_es.md) · [日本語](README_ja.md) · [Русский](README_ru.md) · [Türkçe](README_tr.md) · [中文](README_zh.md)
 
----
+## Содержание
 
-## ⚡ Быстрый старт (За 5 секунд)
+- [Возможности](#возможности)
+- [Требования и установка](#требования-и-установка)
+- [Провайдеры](#провайдеры)
+- [Быстрый старт](#быстрый-старт)
+- [Публичный API](#публичный-api)
+- [Параметры запроса](#параметры-запроса)
+- [Повторы, резервные провайдеры и маршрутизация](#повторы-резервные-провайдеры-и-маршрутизация)
+- [Структурированный вывод](#структурированный-вывод)
+- [Потоковая передача и асинхронный API](#потоковая-передача-и-асинхронный-api)
+- [Генерация медиа и безопасная загрузка](#генерация-медиа-и-безопасная-загрузка)
+- [Сессии и жизненный цикл клиента](#сессии-и-жизненный-цикл-клиента)
+- [Возможности и наблюдаемость](#возможности-и-наблюдаемость)
+- [Архитектура](#архитектура)
+- [Командная строка](#командная-строка)
+- [Совместимость и устранение неполадок](#совместимость-и-устранение-неполадок)
+- [Участие, поддержка и лицензия](#участие-поддержка-и-лицензия)
+
+## Возможности
+
+- Единые API `ask`, `ask_async`, `ask_stream` и `ask_stream_async`.
+- Резервное переключение между провайдерами и маршрутизация по политикам.
+- Повторы при временных сбоях, ограничения времени вызова и всей операции.
+- Типизированные метаданные ответа, нормализованное использование токенов, необязательные хуки наблюдаемости.
+- JSON и проверяемые структурированные ответы для поддерживаемых провайдеров.
+- Необязательные диалоги в оперативной памяти.
+- Совместимые с OpenAI Chat Completions endpoints, включая локальные серверы.
+- Безопасная загрузка медиа с управлением через политики.
+
+Публичный API запросов сейчас отправляет текст; сведения о возможностях не означают поддержку входных изображений для vision. Выполнение вызовов инструментов и постоянное хранение истории не предоставляются.
+
+## Требования и установка
+
+- Python 3.10 или новее.
+- У базового пакета нет обязательных зависимостей. SDK провайдеров, а также библиотеки для медиа и структурированного вывода устанавливаются как необязательные extras.
 
 ```bash
-pip install askai-python
+python -m pip install askai-python
+python -m pip install "askai-python[openai]"       # OpenAI, Azure OpenAI, OpenRouter, совместимые endpoints
+python -m pip install "askai-python[anthropic]"
+python -m pip install "askai-python[google]"
+python -m pip install "askai-python[groq]"
+python -m pip install "askai-python[structured]"   # Pydantic и jsonschema
+python -m pip install "askai-python[media]"        # Pillow
+python -m pip install "askai-python[httpx]"        # безопасная загрузка медиа
+python -m pip install "askai-python[all]"
 ```
+
+Храните учётные данные в переменных окружения или передавайте `api_key=` при создании провайдера. Не записывайте секреты в исходный код.
+
+## Провайдеры
+
+| Провайдер | Импорт | Extra | Переменная окружения | Модель по умолчанию |
+|---|---|---|---|---|
+| OpenAI | `OpenAI` | `openai` | `OPENAI_API_KEY` | `gpt-4o` |
+| Anthropic | `Anthropic` | `anthropic` | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` |
+| Google Gen AI | `Google` | `google` | `GOOGLE_API_KEY` | `gemini-2.0-flash` |
+| Groq | `Groq` | `groq` | `GROQ_API_KEY` | `llama-3.3-70b-versatile` |
+| Azure OpenAI | `Azure` | `openai` | `AZURE_OPENAI_API_KEY` | Deployment обязателен |
+| OpenRouter | `OpenRouter` | `openai` | `OPENROUTER_API_KEY` | `openai/gpt-4o` |
+| Совместимый с OpenAI | `OpenAICompatibleProvider` | `openai` | Нет (необязательно) | Обязателен при создании |
+
+Для Azure также нужен `AZURE_OPENAI_ENDPOINT`. Deployment указывается через `model=` или `AZURE_OPENAI_DEPLOYMENT_NAME`. По умолчанию `AZURE_OPENAI_API_VERSION` равен `2024-06-01`. Для совместимого провайдера требуются абсолютный HTTP(S) `base_url` и модель; для локальных endpoints `api_key` можно не указывать.
+
+`capabilities()` сообщает заявленную поддержку текста, потоковой и асинхронной потоковой передачи, структурированного вывода, вызовов инструментов, генерации изображений/аудио и vision. Это не гарантирует поддержку конкретной моделью или аккаунтом. Выполнение инструментов и входные данные vision не предоставляются как общие функции API.
+
+## Быстрый старт
+
+```python
+from ask_ai import OpenAI
+
+client = OpenAI()  # Читает OPENAI_API_KEY
+response = client.ask("Explain what a Python context manager does.")
+print(response.text)
+```
+
+## Публичный API
+
+| Метод | Результат | Назначение |
+|---|---|---|
+| `provider.ask(query, **options)` | `Response` | Синхронный запрос |
+| `await provider.ask_async(query, **options)` | `Response` | Нативный асинхронный запрос |
+| `provider.ask_stream(query, **options)` | Итератор строк | Синхронный поток текста |
+| `async for chunk in provider.ask_stream_async(...)` | Асинхронный итератор | Асинхронный поток текста |
+| `provider.ask_stream_events(...)` | Итератор событий | Типизированный синхронный поток |
+| `provider.ask_stream_events_async(...)` | Асинхронный итератор событий | Типизированный асинхронный поток |
+
+`Response` содержит `text`, исходный `raw`, разобранный `json`, `parsed`/`pydantic` при заданном `response_model`, а также необязательные `media`, `usage` и `metadata`. `response.json` разбирает текст ответа. Для запроса JSON используйте `json=True`, для проверки модели — `response_model=...`.
+
+## Параметры запроса
+
+Передавайте параметры в запрос или задавайте значения по умолчанию через `provider.advanced(...)`; параметры запроса имеют приоритет.
+
+| Параметр | Назначение |
+|---|---|
+| `temperature`, `max_tokens`, `top_p` | Основные настройки генерации |
+| `frequency_penalty`, `presence_penalty`, `stop` | Настройки, поддерживаемые провайдером |
+| `system_message` (псевдонимы `system`, `prompt`) | Системная инструкция |
+| `timeout` | Тайм-аут отдельного вызова (по умолчанию у клиентов 30 секунд) |
+| `total_timeout` | Общий срок операции, включая повторы |
+| `retry` | Число дополнительных повторов; по умолчанию 2 (до 3 попыток) |
+| `json=True` | Запрос JSON и разбор через `response.json` |
+| `response_model`, `validation_retries` | Разбор и проверка поддерживаемой модели |
+| `output_type` | Запрос поддерживаемого вывода `image` или `audio` |
+| `clean`, `strip`, `code` | Очистка/извлечение текста при чтении `response.text` |
+| `strict_options=True` | Ошибка вместо предупреждения о неизвестных параметрах |
+
+Поддержка зависит от провайдера и модели. По умолчанию неизвестные параметры вызывают предупреждение, в строгом режиме — `ValueError`. Устаревший `safe_mode` не имеет определённого поведения. Для неподдерживаемого типа вывода возникает явная ошибка.
+
+## Повторы, резервные провайдеры и маршрутизация
+
+Для повторяемых временных ошибок выполняются два повтора по умолчанию (до трёх попыток). Ошибки неверного запроса и аутентификации не повторяются. `Retry-After` учитывается с ограничением в 30 секунд. `timeout` ограничивает отдельный вызов, `total_timeout` — всю операцию.
 
 ```python
 from ask_ai import OpenAI, Groq
 
-# Автоматически считывает OPENAI_API_KEY из среды
-OpenAI().ask("Объясни чёрные дыры как для 5-летнего").text
-
-# Мгновенное переключение провайдеров
-Groq().ask("Объясни чёрные дыры как для 5-летнего").text
+response = OpenAI().ask("Hello", providers=[OpenAI, Groq], retry=1)
 ```
 
----
+Переключение на следующий провайдер происходит только при повторяемой ошибке. `Router` выбирает провайдер по политикам и ограничивает общее число попыток параметром `max_attempts`. Повторы могут привести к дополнительной оплате. После выдачи частей потока повтор не выполняется.
 
-## 🧐 Почему askai-python?
+## Структурированный вывод
 
-- **Одна функция**: Просто вызовите `.ask()`.
-- **Поддержка множества провайдеров**: OpenAI, Anthropic, Google Gemini, Groq, Azure, OpenRouter.
-- **Нулевая конфигурация**: Ключи автоматически загружаются из переменных операционной системы.
-- **Сначала SDK, а не фреймворк**: Никак не вмешивается в вашу архитектуру и код.
-
-## 🚫 Чем этот проект НЕ является?
-
-> ❌ Это НЕ огромный AI фреймворк.
-> ❌ Это НЕ API шлюз (API Gateway).
-> ❌ Это НЕ система памяти для агентов.
-
-Этот проект идеально делает только одну вещь: **Упрощает API-запросы к LLM.**
-
----
-
-## 🛠️ Продвинутое использование
-
-### 🧰 Инструменты для разработчиков (Auto-Parsing)
-
-<p align="center">
-  <img src="../assets/features.svg" alt="askai-python features parsing banner" width="100%">
-</p>
-Больше не нужно писать Regex для очистки вывода! `askai-python` содержит встроенные флаги:
+Поддерживаются модели Pydantic, dataclasses, `TypedDict` и JSON Schema. Результат валидации доступен через `.parsed`.
 
 ```python
+from pydantic import BaseModel
 from ask_ai import OpenAI
-ai = OpenAI()
 
-# 1. Clean Markdown (Удаляет теги ```json и т. д.)
-clean_text = ai.ask("Write JSON", clean=True).text
+class Summary(BaseModel):
+    title: str
+    points: list[str]
 
-# 2. Extract Code (Возвращает ТОЛЬКО блок кода, игнорируя болтовню)
-code = ai.ask("Write a python script", code=True).text
-
-# 3. Strip Tags (Удаляет блоки <think> и HTML-теги)
-answer_only = ai.ask("What is 1+1?", strip=True).text
-
-# 4. Enforce & Parse JSON (Напрямую возвращает словарь Python)
-data_dict = ai.ask("Extract info", json=True).json
-print(data_dict['name'])
-```
-
-### 🔄 Встроенные повторные попытки и таймаут (Resiliency)
-
-<p align="center">
-  <img src="../assets/resiliency.svg" alt="askai-python resiliency banner" width="100%">
-</p>
-Умная обработка ошибок сети и ограничений скорости (`429`) с экспоненциальной задержкой:
-
-```python
-# Повторяет попытку до 3 раз при ошибках сети с таймаутом в 10 секунд
-response = ai.ask("Напиши python скрипт", retry=3, timeout=10)
-```
-
-### ⚙ Настройка системы
-Прямая установка системной роли и креативности (temperature):
-
-```python
-ai.advanced(
-    temperature=0.7,
-    prompt="Вы — старший инженер DevOps."
+response = OpenAI().ask(
+    "Summarize the water cycle.",
+    response_model=Summary,
+    validation_retries=1,
 )
-
-print(ai.ask("Как мне оптимизировать Dockerfile?").text)
+print(response.parsed.title)
 ```
 
----
+Нативная поддержка структурированных схем различается. Проверка выполняется локально; некорректный результат приводит к ошибке валидации. Потоковые методы сессии структурированную проверку не поддерживают.
 
-## 🔗 Важные ссылки
+## Потоковая передача и асинхронный API
 
-- **GitHub-репозиторий**: [Hosseinghorbani0/askai-python](https://github.com/Hosseinghorbani0/askai-python) (Не забудьте поставить звезду! ⭐)
-- **PyPI пакет**: [askai-python](https://pypi.org/project/askai-python/)
-- **Официальный сайт**: [hosseinghorbani0.ir](https://hosseinghorbani0.ir/)
+```python
+for chunk in client.ask_stream("Write a short greeting."):
+    print(chunk, end="", flush=True)
+```
+
+Для асинхронного режима используйте `ask_async()` и `ask_stream_async()` через `await` и `async for`. Текущие типы потоковых событий: `TextDelta`, `UsageUpdate`, `Completed` и `Error`. `ToolCall` экспортируется как тип события, но текущие адаптеры провайдеров не выдают события вызова инструментов. Для получения событий используйте `ask_stream_events()` и `ask_stream_events_async()`. Обрабатывайте отмену и ошибки провайдера в приложении.
+
+## Генерация медиа и безопасная загрузка
+
+Некоторые провайдеры реализуют генерацию изображений/аудио через `output_type="image"` или `"audio"`. Доступность зависит от провайдера и модели. Входные изображения для vision API сейчас не поддерживаются.
+
+Для безопасной загрузки нужен extra `httpx`. По умолчанию обязательны HTTPS, запрещены перенаправления и непубличные DNS-адреса, установлен лимит 25 MiB и тайм-аут 30 секунд. Можно ограничить MIME-типы и хосты.
+
+```python
+from ask_ai import MediaPolicy, download_media
+
+data = download_media(
+    "https://example.com/image.png",
+    MediaPolicy(max_bytes=10 * 1024 * 1024,
+                allowed_mime_types={"image/png"},
+                allowed_hosts={"example.com"}),
+)
+```
+
+Используйте `allow_private=True` только для доверенных адресов частных сетей. Политика загрузки не делает любые URL от провайдеров безопасными для других целей.
+
+## Сессии и жизненный цикл клиента
+
+`provider.session()` создаёт необязательную сессию диалога в памяти:
+
+```python
+with OpenAI() as client:
+    session = client.session(max_messages=20)
+    session.ask("My name is Ada.")
+    print(session.ask("What is my name?").text)
+```
+
+История хранится в памяти процесса, не сохраняется между запусками; `max_messages` ограничивает её парами пользователь/ассистент. Конкурентные синхронные запросы сериализуются между собой, как и асинхронные. Не смешивайте синхронные и асинхронные операции одновременно в одной сессии.
+
+Провайдеры поддерживают `close()`/`aclose()` и синхронные/асинхронные менеджеры контекста. Закрывайте клиент после использования. Кэшированный async-клиент привязан к первому использованному циклу событий; создавайте отдельный экземпляр провайдера для каждого цикла.
+
+## Возможности и наблюдаемость
+
+Проверяйте заявленные функции через `provider.capabilities()`. Подключите хук наблюдаемости методом `provider.use(Observability(...))`, чтобы получать данные о провайдере, модели, задержке, числе повторов и нормализованном использовании токенов. Расчёт стоимости возможен только при заданных ценах и полученных от провайдера данных использования.
+
+```python
+from ask_ai import Observability, OpenAI
+
+events = []
+client = OpenAI()
+client.use(Observability(on_event=events.append))
+response = client.ask("Return one word.")
+print(response.metadata)
+```
+
+Не передавайте секреты, личные данные или конфиденциальные запросы в собственные обработчики телеметрии. Исключения хуков не прерывают запрос.
+
+## Архитектура
+
+`ask_ai` включает общий базовый класс провайдера, адаптеры SDK, общий `Response`, необязательные `Router` и `ConversationSession`, а также инструменты структурированного вывода и безопасности медиа. SDK импортируются по требованию, поэтому все интеграции не нужно устанавливать для импорта пакета. Запросы не проходят через собственный сервис библиотеки.
+
+## Командная строка
+
+Команда `ask-ai` поддерживает OpenAI, Groq, Google, OpenRouter, Azure и Anthropic:
+
+```bash
+ask-ai --provider openai "Explain recursion in one sentence."
+ask-ai --provider groq --stream "List three Python tips."
+ask-ai --help
+```
+
+CLI использует переменные окружения выбранного провайдера. Общий OpenAI-совместимый провайдер доступен через Python API, но пока отсутствует среди вариантов CLI.
+
+## Совместимость и устранение неполадок
+
+- **Python:** классификаторы указывают 3.10–3.13; минимальная версия — 3.10.
+- **Типизация:** в пакет включён `ask_ai/py.typed`.
+- **Нет SDK:** установите соответствующий extra, например `askai-python[openai]`.
+- **Нет ключа:** задайте указанную переменную окружения или передайте `api_key=`.
+- **Ошибка Azure:** укажите endpoint, ключ и deployment/model.
+- **Неизвестный параметр:** проверьте написание или включите `strict_options=True`.
+- **Ошибка event loop:** не используйте один async-клиент в разных циклах событий.
+- **Неверный структурированный вывод:** проверьте модель/схему; дополнительные попытки могут быть платными.
+- **Реальный API:** тесты с mock не гарантируют совместимость с живым сервисом; интеграционные проверки могут тарифицироваться.
+
+## Участие, поддержка и лицензия
+
+Сообщайте об ошибках и предлагайте функции через [трекер задач](https://github.com/Hosseinghorbani0/ask-ai/issues). Для изменений кода добавляйте целевые тесты и обновления документации. Перед отправкой запустите `python -m pytest -q` и `ruff check .`; история изменений находится в [CHANGELOG.md](../CHANGELOG.md).
+
+Проект распространяется по [лицензии MIT](../LICENSE). В обращениях приводите минимальный воспроизводимый пример, удалив API-ключи, персональные данные и другие секреты. См. также [PyPI](https://pypi.org/project/askai-python/) и [репозиторий GitHub](https://github.com/Hosseinghorbani0/ask-ai).
