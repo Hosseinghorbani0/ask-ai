@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import os
 import pkgutil
+import threading
 
 import pytest
 
@@ -9,6 +10,7 @@ import ask_ai
 from ask_ai import AdvancedConfig, Azure, OpenAI
 from ask_ai.base import BaseProvider
 from ask_ai.exceptions import (
+    AskAIParsingError,
     ProviderAuthError,
     ProviderConnectionError,
     ProviderInvalidRequestError,
@@ -84,6 +86,74 @@ def test_config_merge_preserves_safe_mode_when_request_omits_it():
 
     assert global_config.merge(request_config).safe_mode is True
     assert AdvancedConfig(retry=2).to_dict()["extra"]["retry"] == 2
+
+
+def test_retry_count_is_request_context_local_across_threads_and_tasks():
+    provider = object.__new__(BaseProvider)
+    thread_barrier = threading.Barrier(2)
+    thread_results = {}
+
+    def set_thread_retry(name, value):
+        provider._retry_count = value
+        thread_barrier.wait()
+        thread_results[name] = provider._retry_count
+
+    threads = [
+        threading.Thread(target=set_thread_retry, args=("one", 1)),
+        threading.Thread(target=set_thread_retry, args=("zero", 0)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert thread_results == {"one": 1, "zero": 0}
+
+    async def verify_tasks():
+        first_set = asyncio.Event()
+        second_set = asyncio.Event()
+
+        async def first():
+            provider._retry_count = 1
+            first_set.set()
+            await second_set.wait()
+            return provider._retry_count
+
+        async def second():
+            await first_set.wait()
+            provider._retry_count = 0
+            second_set.set()
+            return provider._retry_count
+
+        return await asyncio.gather(first(), second())
+
+    assert asyncio.run(verify_tasks()) == [1, 0]
+
+
+def test_negative_retry_count_fails_before_provider_call():
+    provider = object.__new__(BaseProvider)
+    calls = []
+
+    with pytest.raises(ValueError, match="retry must be non-negative"):
+        provider._execute_with_retry(
+            lambda *args: calls.append(args),
+            [],
+            AdvancedConfig(),
+            None,
+            -1,
+        )
+
+    assert calls == []
+
+
+def test_response_repr_and_json_parse_errors_do_not_include_response_text():
+    secret = "customer-secret@example.test"
+    response = ask_ai.Response(secret)
+
+    assert secret not in repr(response)
+    with pytest.raises(AskAIParsingError) as error:
+        response.json
+    assert secret not in str(error.value)
 
 
 def test_provider_exception_mapper_and_retry_policy():
@@ -281,21 +351,23 @@ def test_openrouter_async_stream_retries_connection_before_first_chunk(monkeypat
     async def collect():
         return [chunk async for chunk in provider.ask_stream_async("hello")]
 
-    assert asyncio.run(collect()) == ["ready"]
-    assert completions.calls == 2
-    assert provider._retry_count == 1
-
-    completions.fail_always = True
-
     async def collect_without_retry():
         with pytest.raises(
             ProviderConnectionError,
-            match="OpenRouter streaming failed: Connection error",
+            match="OpenRouter streaming failed: APIConnectionError",
         ):
             async for _chunk in provider.ask_stream_async("hello", retry=0):
                 pass
 
-    asyncio.run(collect_without_retry())
+    async def collect_both():
+        chunks = await collect()
+        assert completions.calls == 2
+        assert provider._retry_count == 1
+        completions.fail_always = True
+        await collect_without_retry()
+        return chunks
+
+    assert asyncio.run(collect_both()) == ["ready"]
     assert completions.calls == 3
 
 
@@ -571,6 +643,267 @@ def test_streaming_fallback_stops_after_first_provider_emits():
         raise AssertionError("stream failure should not switch providers after emission")
 
 
+def test_nonretryable_request_fallback_stops_for_sync_and_async_calls():
+    calls = []
+
+    class InvalidProvider(BaseProvider):
+        error = ProviderInvalidRequestError("invalid request")
+
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            calls.append("invalid")
+            raise self.error
+
+    class AuthProvider(InvalidProvider):
+        error = ProviderAuthError("invalid credentials")
+
+    class SuccessfulProvider(InvalidProvider):
+        def _send_request(self, messages, config, output_type=None):
+            calls.append("success")
+            return ask_ai.Response("ok")
+
+    with pytest.raises(ProviderInvalidRequestError):
+        InvalidProvider(api_key="test").ask(
+            "hello",
+            providers=[InvalidProvider(api_key="test"), SuccessfulProvider(api_key="test")],
+            retry=0,
+        )
+
+    async def ask_with_auth_error():
+        with pytest.raises(ProviderAuthError):
+            await AuthProvider(api_key="test").ask_async(
+                "hello",
+                providers=[AuthProvider(api_key="test"), SuccessfulProvider(api_key="test")],
+                retry=0,
+            )
+
+    asyncio.run(ask_with_auth_error())
+    assert calls == ["invalid", "invalid"]
+
+
+def test_nonretryable_stream_fallback_stops_for_sync_and_async_calls():
+    calls = []
+
+    class InvalidStreamProvider(BaseProvider):
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            raise ProviderInvalidRequestError("invalid request")
+
+        def _send_request_stream(self, messages, config):
+            calls.append("sync-invalid")
+            raise ProviderInvalidRequestError("invalid stream request")
+            yield
+
+        async def _send_request_stream_async(self, messages, config):
+            calls.append("async-invalid")
+            raise ProviderInvalidRequestError("invalid async stream request")
+            yield
+
+    class SuccessfulStreamProvider(InvalidStreamProvider):
+        def _send_request_stream(self, messages, config):
+            calls.append("sync-success")
+            yield "ok"
+
+        async def _send_request_stream_async(self, messages, config):
+            calls.append("async-success")
+            yield "ok"
+
+    with pytest.raises(ProviderInvalidRequestError):
+        list(
+            InvalidStreamProvider(api_key="test").ask_stream(
+                "hello",
+                providers=[
+                    InvalidStreamProvider(api_key="test"),
+                    SuccessfulStreamProvider(api_key="test"),
+                ],
+                retry=0,
+            )
+        )
+
+    async def collect():
+        with pytest.raises(ProviderInvalidRequestError):
+            [
+                chunk
+                async for chunk in InvalidStreamProvider(api_key="test").ask_stream_async(
+                    "hello",
+                    providers=[
+                        InvalidStreamProvider(api_key="test"),
+                        SuccessfulStreamProvider(api_key="test"),
+                    ],
+                    retry=0,
+                )
+            ]
+
+    asyncio.run(collect())
+    assert calls == ["sync-invalid", "async-invalid"]
+
+
+def test_nonretryable_bad_options_do_not_advance_provider_fallback():
+    calls = []
+
+    class StrictProvider(BaseProvider):
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            calls.append("request")
+            return ask_ai.Response("ok")
+
+    first = StrictProvider(api_key="test", strict_options=True)
+    second = StrictProvider(api_key="test")
+    with pytest.raises(ValueError, match="Unknown option"):
+        first.ask("hello", providers=[first, second], retry=0, unknown_option=True)
+    assert calls == []
+
+
+def test_nonretryable_event_fallback_emits_error_without_advancing():
+    from ask_ai.events import Error
+
+    calls = []
+
+    class FailedEvents:
+        def ask_stream_events(self, query, **kwargs):
+            calls.append("sync-invalid")
+            yield Error(ProviderInvalidRequestError("invalid request"), emitted_chunks=0)
+
+        async def ask_stream_events_async(self, query, **kwargs):
+            calls.append("async-invalid")
+            yield Error(ProviderInvalidRequestError("invalid request"), emitted_chunks=0)
+
+    class SuccessfulEvents:
+        def ask_stream_events(self, query, **kwargs):
+            calls.append("sync-success")
+            yield ask_ai.TextDelta("ok", index=0)
+
+        async def ask_stream_events_async(self, query, **kwargs):
+            calls.append("async-success")
+            yield ask_ai.TextDelta("ok", index=0)
+
+    provider = object.__new__(BaseProvider)
+    sync_events = list(
+        provider.ask_stream_events(
+            "hello", providers=[FailedEvents(), SuccessfulEvents()], retry=0
+        )
+    )
+    assert isinstance(sync_events[0], Error)
+
+    async def collect():
+        return [
+            event
+            async for event in provider.ask_stream_events_async(
+                "hello", providers=[FailedEvents(), SuccessfulEvents()], retry=0
+            )
+        ]
+
+    async_events = asyncio.run(collect())
+    assert isinstance(async_events[0], Error)
+    assert calls == ["sync-invalid", "async-invalid"]
+
+
+def test_total_timeout_bounds_sync_retries_and_attempt_timeout(monkeypatch):
+    now = [100.0]
+    delays = []
+    seen_timeouts = []
+
+    class TimeoutProvider(BaseProvider):
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            seen_timeouts.append(config.extra["timeout"])
+            raise ProviderTimeoutError("timeout")
+
+    def sleep(delay):
+        delays.append(delay)
+        now[0] += delay
+
+    monkeypatch.setattr("ask_ai.base.time.monotonic", lambda: now[0])
+    monkeypatch.setattr("ask_ai.base.time.sleep", sleep)
+    monkeypatch.setattr("ask_ai.base.random.uniform", lambda _a, _b: 0)
+
+    with pytest.raises(ProviderTimeoutError, match="deadline"):
+        TimeoutProvider(api_key="test").ask("hello", retry=3, total_timeout=5)
+
+    assert seen_timeouts == [5, 3]
+    assert delays == [2, 3]
+
+
+def test_total_timeout_bounds_async_retries(monkeypatch):
+    now = [100.0]
+    delays = []
+    calls = []
+
+    class TimeoutProvider(BaseProvider):
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            raise AssertionError("sync request should not be used")
+
+        async def _send_request_async(self, messages, config, output_type=None):
+            calls.append(config.extra["timeout"])
+            raise ProviderTimeoutError("timeout")
+
+    async def sleep(delay):
+        delays.append(delay)
+        now[0] += delay
+
+    monkeypatch.setattr("ask_ai.base.time.monotonic", lambda: now[0])
+    monkeypatch.setattr("ask_ai.base.asyncio.sleep", sleep)
+    monkeypatch.setattr("ask_ai.base.random.uniform", lambda _a, _b: 0)
+
+    with pytest.raises(ProviderTimeoutError, match="deadline"):
+        asyncio.run(TimeoutProvider(api_key="test").ask_async("hello", retry=3, total_timeout=5))
+
+    assert calls == [5, 3]
+    assert delays == [2, 3]
+
+
+def test_retry_after_is_honored_and_clamped(monkeypatch):
+    delays = []
+    calls = []
+
+    class RateLimitProvider(BaseProvider):
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            calls.append(1)
+            error = ProviderRateLimitError("limited")
+            error.retry_after = 17 if len(calls) == 1 else 100
+            if len(calls) <= 2:
+                raise error
+            return ask_ai.Response("ok")
+
+    monkeypatch.setattr("ask_ai.base.time.sleep", delays.append)
+    monkeypatch.setattr("ask_ai.base.random.uniform", lambda _a, _b: 0)
+
+    assert RateLimitProvider(api_key="test").ask("hello", retry=2).text == "ok"
+    assert delays == [17, 30]
+
+
 def test_openai_async_tool_call_uses_async_media_generation():
     class Function:
         name = "generate_image"
@@ -640,7 +973,7 @@ def test_async_streaming_fallback_accepts_async_generators():
 
         async def _send_request_stream_async(self, messages, config):
             if self.chunks is None:
-                raise RuntimeError("first provider failed")
+                raise ProviderTimeoutError("first provider failed")
             for chunk in self.chunks:
                 yield chunk
 
@@ -654,6 +987,186 @@ def test_async_streaming_fallback_accepts_async_generators():
         ]
 
     assert asyncio.run(collect()) == ["ok"]
+
+
+def test_default_async_stream_adapter_yields_first_chunk_incrementally():
+    release = threading.Event()
+    closed = threading.Event()
+
+    class SlowSyncStreamProvider(BaseProvider):
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            return ask_ai.Response("unused")
+
+        def _send_request_stream(self, messages, config):
+            try:
+                yield "first"
+                release.wait()
+                yield "second"
+            finally:
+                closed.set()
+
+    async def consume_first():
+        stream = SlowSyncStreamProvider(api_key="test")._send_request_stream_async(
+            [], AdvancedConfig()
+        )
+        try:
+            return await asyncio.wait_for(anext(stream), timeout=0.25)
+        finally:
+            await stream.aclose()
+
+    assert asyncio.run(consume_first()) == "first"
+    release.set()
+    assert closed.wait(1)
+
+
+def test_default_async_stream_adapter_closes_sync_source_on_early_aclose():
+    release = threading.Event()
+    waiting = threading.Event()
+    closed = threading.Event()
+
+    class SlowSyncStreamProvider(BaseProvider):
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            return ask_ai.Response("unused")
+
+        def _send_request_stream(self, messages, config):
+            try:
+                yield "first"
+                waiting.set()
+                release.wait()
+                yield "second"
+            finally:
+                closed.set()
+
+    async def close_early():
+        stream = SlowSyncStreamProvider(api_key="test")._send_request_stream_async(
+            [], AdvancedConfig()
+        )
+        assert await asyncio.wait_for(anext(stream), timeout=1) == "first"
+        assert await asyncio.to_thread(waiting.wait, 1)
+        await stream.aclose()
+        release.set()
+        assert await asyncio.to_thread(closed.wait, 1)
+
+    asyncio.run(close_early())
+
+
+def test_default_async_stream_adapter_closes_sync_source_on_cancellation():
+    release = threading.Event()
+    waiting = threading.Event()
+    closed = threading.Event()
+
+    class SlowSyncStreamProvider(BaseProvider):
+        def _get_api_key_env_var(self):
+            return "TEST_API_KEY"
+
+        def _get_default_model(self):
+            return "test"
+
+        def _send_request(self, messages, config, output_type=None):
+            return ask_ai.Response("unused")
+
+        def _send_request_stream(self, messages, config):
+            try:
+                yield "first"
+                waiting.set()
+                release.wait()
+                yield "second"
+            finally:
+                closed.set()
+
+    async def cancel_consumer():
+        stream = SlowSyncStreamProvider(api_key="test")._send_request_stream_async(
+            [], AdvancedConfig()
+        )
+        assert await asyncio.wait_for(anext(stream), timeout=1) == "first"
+        next_chunk = asyncio.create_task(anext(stream))
+        assert await asyncio.to_thread(waiting.wait, 1)
+        next_chunk.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await next_chunk
+        release.set()
+        assert await asyncio.to_thread(closed.wait, 1)
+
+    asyncio.run(cancel_consumer())
+
+
+def test_openai_provider_sync_and_async_context_managers_close_clients(monkeypatch):
+    from types import SimpleNamespace
+
+    from ask_ai.providers import openai_provider
+
+    closed = []
+
+    class SyncClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def close(self):
+            closed.append("sync")
+
+    class AsyncClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def close(self):
+            closed.append("async")
+
+    monkeypatch.setattr(
+        openai_provider,
+        "openai",
+        SimpleNamespace(OpenAI=SyncClient, AsyncOpenAI=AsyncClient),
+    )
+    provider = OpenAI(api_key="test")
+    with provider as entered:
+        assert entered is provider
+    assert closed == ["sync"]
+
+    provider = OpenAI(api_key="test")
+
+    async def verify_async_context():
+        async with provider as entered:
+            assert entered is provider
+            _ = provider.async_client
+
+    asyncio.run(verify_async_context())
+    assert closed == ["sync", "async", "sync"]
+
+
+def test_openai_async_client_rejects_cross_event_loop_reuse(monkeypatch):
+    from types import SimpleNamespace
+
+    from ask_ai.providers import openai_provider
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+    monkeypatch.setattr(
+        openai_provider,
+        "openai",
+        SimpleNamespace(OpenAI=Client, AsyncOpenAI=Client),
+    )
+    provider = OpenAI(api_key="test")
+
+    async def get_async_client():
+        return provider.async_client
+
+    first_client = asyncio.run(get_async_client())
+    with pytest.raises(RuntimeError, match="bound to another event loop"):
+        asyncio.run(get_async_client())
+    assert provider._async_client is first_client
 
 
 def test_openrouter_image_uses_bearer_auth_and_returns_response(monkeypatch):

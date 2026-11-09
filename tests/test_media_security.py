@@ -26,9 +26,64 @@ def test_media_policy_rejects_insecure_and_unallowlisted_urls():
         policy.validate_url("https://other.example/image.png")
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://user:password@93.184.216.34/resource",
+        "https://127.0.0.1@media.example/resource",
+    ],
+)
+def test_media_policy_rejects_userinfo_urls(url):
+    with pytest.raises(MediaSecurityError, match="credentials"):
+        MediaPolicy().validate_url(url)
+
+
+@pytest.mark.parametrize(
+    ("url", "resolved_address"),
+    [
+        ("https://[::ffff:127.0.0.1]/resource", None),
+        ("https://2130706433/resource", "127.0.0.1"),
+        ("https://0177.0.0.1/resource", "127.0.0.1"),
+        ("https://0x7f000001/resource", "127.0.0.1"),
+    ],
+)
+def test_media_policy_rejects_non_public_numeric_ip_spellings(
+    monkeypatch, url, resolved_address
+):
+    if resolved_address is not None:
+        monkeypatch.setattr(
+            socket,
+            "getaddrinfo",
+            lambda host, port, type: [
+                (
+                    socket.AF_INET,
+                    socket.SOCK_STREAM,
+                    6,
+                    "",
+                    (resolved_address, port),
+                )
+            ],
+        )
+
+    with pytest.raises(MediaSecurityError, match="non-public IP"):
+        MediaPolicy().validate_url(url)
+
+
+@pytest.mark.parametrize(
+    ("url", "allowed_hosts"),
+    [
+        ("https://bücher.example/resource", {"xn--bcher-kva.example"}),
+        ("https://xn--bcher-kva.example/resource", {"bücher.example"}),
+        ("https://EXAMPLE.COM./resource", {"example.com"}),
+    ],
+)
+def test_media_policy_normalizes_idna_allowlist_hosts(url, allowed_hosts):
+    MediaPolicy(allowed_hosts=allowed_hosts).validate_url(url)
+
+
 def test_media_download_enforces_size_and_mime(monkeypatch):
     class Response:
-        headers = {"content-type": "image/png", "content-length": "12"}
+        headers = {"content-type": "image/png", "content-length": "2"}
 
         def __enter__(self):
             return self
@@ -101,9 +156,67 @@ def test_media_download_rejects_mime_spoofing(monkeypatch):
         )
 
 
+@pytest.mark.parametrize(
+    ("content_length", "body", "error"),
+    [
+        ("100", b"\x89PNG\r\n\x1a\n", "exceeds the configured size limit"),
+        ("1", b"\x89PNG\r\n\x1a\n", "does not match"),
+        ("-1", b"", "invalid Content-Length"),
+        ("unknown", b"", "invalid Content-Length"),
+    ],
+)
+def test_media_download_rejects_mismatched_or_invalid_content_lengths(
+    monkeypatch, content_length, body, error
+):
+    class Response:
+        status_code = 200
+        headers = {
+            "content-type": "image/png",
+            "content-length": content_length,
+        }
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_bytes(self):
+            yield body
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def stream(self, method, url):
+            return Response()
+
+    monkeypatch.setattr("httpx.Client", Client)
+    with pytest.raises(MediaSecurityError, match=error):
+        download_media(
+            "https://example.com/image.png",
+            MediaPolicy(max_bytes=20),
+        )
+
+
 def test_media_from_base64_checks_encoded_length_before_decoding():
     with pytest.raises(MediaError, match="size limit"):
         ImageObject.from_base64("AAAAAA==", max_encoded_length=4)
+
+
+def test_image_exposes_media_type_used_by_cli_and_examples():
+    image = ImageObject(b"\x89PNG\r\n\x1a\n")
+
+    assert image.type == "image"
 
 
 def test_media_download_rejects_redirects(monkeypatch):
@@ -193,7 +306,13 @@ def test_media_policy_rejects_host_with_any_non_public_dns_answer(monkeypatch):
         MediaPolicy().validate_url("https://mixed.example/resource")
 
 
-def test_media_download_connects_only_to_the_validated_dns_address(monkeypatch):
+@pytest.mark.parametrize(
+    "changed_address",
+    ["127.0.0.1", "10.0.0.1", "::1"],
+)
+def test_media_download_connects_only_to_the_validated_dns_address(
+    monkeypatch, changed_address
+):
     import httpcore
 
     dns_calls = []
@@ -202,10 +321,14 @@ def test_media_download_connects_only_to_the_validated_dns_address(monkeypatch):
 
     def resolve(host, port, type):
         dns_calls.append(host)
-        address = "93.184.216.34" if len(dns_calls) == 1 else "127.0.0.1"
+        address = (
+            "93.184.216.34"
+            if len(dns_calls) == 1
+            else changed_address
+        )
         return [
             (
-                socket.AF_INET,
+                socket.AF_INET6 if ":" in address else socket.AF_INET,
                 socket.SOCK_STREAM,
                 6,
                 "",

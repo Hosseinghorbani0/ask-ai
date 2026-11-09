@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 import pytest
 
@@ -33,6 +33,49 @@ def test_structured_response_exposes_raw_and_parsed():
 def test_structured_response_rejects_invalid_data():
     with pytest.raises(StructuredValidationError):
         parse_structured('{"name": "Ada", "age": "wrong"}', User)
+
+
+def test_response_to_model_validates_dataclass_field_types():
+    with pytest.raises(StructuredValidationError, match="age"):
+        Response('{"name": "Ada", "age": "wrong"}').to_model(User)
+    assert Response('{"name": "Ada", "age": 37}').to_model(User) == User("Ada", 37)
+
+
+def test_empty_json_schema_is_a_valid_response_model():
+    assert Response("42", response_model={}).parsed == 42
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ("42", 42),
+        ('"text"', "text"),
+        ("true", True),
+        ("null", None),
+        ("[1, 2]", [1, 2]),
+        ('{"key": "value"}', {"key": "value"}),
+    ],
+)
+def test_response_json_returns_typed_json_values(payload, expected):
+    assert Response(payload).json == expected
+
+
+def test_dataclass_default_fields_are_applied_when_omitted():
+    @dataclass
+    class UserWithDefault:
+        name: str
+        active: bool = True
+
+    assert parse_structured('{"name": "Ada"}', UserWithDefault) == UserWithDefault("Ada")
+
+
+def test_invalid_literal_value_raises_structured_validation_error():
+    @dataclass
+    class Result:
+        status: Literal["ok", "error"]
+
+    with pytest.raises(StructuredValidationError, match="status"):
+        parse_structured('{"status": "unknown"}', Result)
 
 
 def test_structured_response_retries_validation_errors(monkeypatch):

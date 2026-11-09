@@ -65,6 +65,7 @@ class AzureProvider(OpenAIProvider):
                 timeout=self.config.extra.get("timeout", 30.0),
                 max_retries=0,
             )
+        self._check_async_client_loop()
         return self._async_client
 
     def _get_api_key_env_var(self):

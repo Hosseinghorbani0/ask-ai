@@ -1,6 +1,6 @@
 from ask_ai import Observability
 from ask_ai.base import BaseProvider, Response
-from ask_ai.exceptions import ProviderInvalidRequestError
+from ask_ai.exceptions import ProviderError, ProviderInvalidRequestError, ProviderTimeoutError
 
 
 class ObservableProvider(BaseProvider):
@@ -71,4 +71,39 @@ def test_observability_emits_failure_reason():
         raise AssertionError("Expected provider error")
 
     assert events[0]["type"] == "failed"
-    assert events[0]["metadata"].failure_reason == "invalid input"
+    assert events[0]["metadata"].failure_reason == "ProviderInvalidRequestError"
+    assert events[0]["error"] == {
+        "provider": "FailingProvider",
+        "type": "ProviderInvalidRequestError",
+    }
+
+
+def test_fallback_redacts_exception_text_and_preserves_cause(caplog):
+    secret = "private-prompt-fragment"
+    original_error = ProviderTimeoutError(f"request rejected: {secret}")
+    events = []
+
+    class LeakyProvider(ObservableProvider):
+        def _send_request(self, messages, config, output_type=None):
+            raise original_error
+
+    provider = LeakyProvider(api_key="test").use(Observability(on_event=events.append))
+
+    try:
+        provider.ask("question", providers=[provider], retry=0)
+    except ProviderError as error:
+        aggregate = error
+    else:
+        raise AssertionError("Expected aggregate provider error")
+
+    assert secret not in str(aggregate)
+    assert aggregate.__cause__ is original_error
+    assert secret not in caplog.text
+    assert "LeakyProvider: ProviderTimeoutError" in str(aggregate)
+    failed_event = next(event for event in events if event["type"] == "failed")
+    assert secret not in repr(failed_event)
+    assert failed_event["metadata"].failure_reason == "ProviderTimeoutError"
+    assert failed_event["error"] == {
+        "provider": "LeakyProvider",
+        "type": "ProviderTimeoutError",
+    }

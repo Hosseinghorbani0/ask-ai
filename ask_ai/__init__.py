@@ -29,7 +29,7 @@ from .exceptions import (
 from .media import AudioObject, ImageObject
 from .media_security import MediaPolicy, download_media
 from .observability import Observability, ResponseMetadata, Usage
-from .providers import Anthropic, Azure, Google, Groq, OpenAI, OpenRouter
+from .providers import Anthropic, Azure, Google, Groq, OpenAI, OpenAICompatibleProvider, OpenRouter
 from .router import Router
 from .session import ConversationSession
 from .structured import parse_structured
@@ -42,6 +42,7 @@ __all__ = [
     "Groq",
     "Azure",
     "OpenRouter",
+    "OpenAICompatibleProvider",
     # Core
     "AdvancedConfig",
     "Response",

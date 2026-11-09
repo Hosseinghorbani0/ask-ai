@@ -23,7 +23,12 @@ logger = logging.getLogger("ask_ai")
 
 class GoogleProvider(BaseProvider):
     def capabilities(self) -> Capabilities:
-        return Capabilities(streaming=True, async_streaming=True, vision=True)
+        return Capabilities(
+            streaming=True,
+            async_streaming=True,
+            structured_output=True,
+            vision=False,
+        )
 
     def __init__(self, api_key: str = None, model: str = None, **kwargs):
         super().__init__(api_key, model, **kwargs)
@@ -67,6 +72,7 @@ class GoogleProvider(BaseProvider):
         """Close the asynchronous Google SDK client."""
         if hasattr(self, "client"):
             await self.client.aio.aclose()
+            self.close()
 
     # ─── Message and request helpers ───────────────────────
 
@@ -93,6 +99,7 @@ class GoogleProvider(BaseProvider):
             "max_output_tokens": config.max_tokens,
             "temperature": config.temperature,
             "top_p": config.top_p,
+            "stop_sequences": config.stop,
             "system_instruction": system_instruction,
             "http_options": {
                 "timeout": self._timeout_ms(config),
@@ -164,9 +171,14 @@ class GoogleProvider(BaseProvider):
                 return
 
             chunks = self.client.models.generate_content_stream(**request)
-            for chunk in chunks:
-                if chunk.text:
-                    yield chunk.text
+            try:
+                for chunk in chunks:
+                    if chunk.text:
+                        yield chunk.text
+            finally:
+                close = getattr(chunks, "close", None)
+                if callable(close):
+                    close()
         except Exception as e:
             raise map_provider_exception(e, "Google", "streaming") from e
 
@@ -178,13 +190,18 @@ class GoogleProvider(BaseProvider):
 
             chunks = self.client.models.generate_content_stream(**request)
             index = 0
-            for chunk in chunks:
-                if chunk.text:
-                    yield TextDelta(text=chunk.text, index=index)
-                    index += 1
-                usage = self._usage(chunk)
-                if usage is not None:
-                    yield UsageUpdate(**usage.__dict__)
+            try:
+                for chunk in chunks:
+                    if chunk.text:
+                        yield TextDelta(text=chunk.text, index=index)
+                        index += 1
+                    usage = self._usage(chunk)
+                    if usage is not None:
+                        yield UsageUpdate(**usage.__dict__)
+            finally:
+                close = getattr(chunks, "close", None)
+                if callable(close):
+                    close()
         except Exception as e:
             raise map_provider_exception(e, "Google", "streaming") from e
 
@@ -196,6 +213,7 @@ class GoogleProvider(BaseProvider):
         config: AdvancedConfig,
         output_type: str = None,
     ) -> Response:
+        self._check_async_client_loop()
         if output_type in ("image", "audio"):
             raise MediaTypeNotSupportedError("Google provider currently supports text generation primarily.")
 
@@ -224,19 +242,26 @@ class GoogleProvider(BaseProvider):
             raise map_provider_exception(e, "Google", "API") from e
 
     async def _send_request_stream_async(self, messages, config) -> AsyncIterator[str]:
+        self._check_async_client_loop()
         try:
             contents, request = self._request_args(messages, config)
             if not contents:
                 return
 
             chunks = self.client.aio.models.generate_content_stream(**request)
-            async for chunk in chunks:
-                if chunk.text:
-                    yield chunk.text
+            try:
+                async for chunk in chunks:
+                    if chunk.text:
+                        yield chunk.text
+            finally:
+                close = getattr(chunks, "aclose", None)
+                if callable(close):
+                    await close()
         except Exception as e:
             raise map_provider_exception(e, "Google", "streaming") from e
 
     async def _send_request_stream_events_async(self, messages, config) -> AsyncIterator:
+        self._check_async_client_loop()
         try:
             contents, request = self._request_args(messages, config)
             if not contents:
@@ -244,12 +269,17 @@ class GoogleProvider(BaseProvider):
 
             chunks = self.client.aio.models.generate_content_stream(**request)
             index = 0
-            async for chunk in chunks:
-                if chunk.text:
-                    yield TextDelta(text=chunk.text, index=index)
-                    index += 1
-                usage = self._usage(chunk)
-                if usage is not None:
-                    yield UsageUpdate(**usage.__dict__)
+            try:
+                async for chunk in chunks:
+                    if chunk.text:
+                        yield TextDelta(text=chunk.text, index=index)
+                        index += 1
+                    usage = self._usage(chunk)
+                    if usage is not None:
+                        yield UsageUpdate(**usage.__dict__)
+            finally:
+                close = getattr(chunks, "aclose", None)
+                if callable(close):
+                    await close()
         except Exception as e:
             raise map_provider_exception(e, "Google", "streaming") from e
