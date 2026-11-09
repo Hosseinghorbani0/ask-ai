@@ -99,9 +99,14 @@ ai = OpenAI()
 response = ai.ask(
     "Write a complex python script", 
     retry=3, 
-    timeout=15 
+    timeout=15,
+    total_timeout=30,
 )
 ```
+
+`timeout` limits an individual provider call. `total_timeout` limits the full
+request including retries and backoff. Rate-limit `Retry-After` hints are
+honored up to a 30-second cap.
 
 ## 🎨 Media Generation (Image & Audio)
 
@@ -174,8 +179,10 @@ session.ask("My name is Ada.")
 print(session.ask("What is my name?").text)
 ```
 
-Session state is not persisted, and session requests do not support
-`response_model` validation yet.
+Session state is not persisted. Non-streaming session requests support
+validated `response_model` output; streaming session methods do not validate
+structured responses. Concurrent sync requests serialize with one another, as
+do concurrent async requests; do not mix both modes concurrently on one session.
 
 ## 🗺️ Roadmap
 
