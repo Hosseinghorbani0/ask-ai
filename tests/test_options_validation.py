@@ -6,6 +6,7 @@ import pytest
 from ask_ai import AdvancedConfig, Azure
 from ask_ai.base import BaseProvider, Response
 from ask_ai.config import CONFIG_OPTION_NAMES
+from ask_ai.providers.anthropic_provider import AnthropicProvider
 from ask_ai.providers.openai_provider import OpenAIProvider
 from ask_ai.providers.openrouter_provider import OpenRouterProvider
 
@@ -99,6 +100,24 @@ def test_known_forwarded_options_do_not_warn():
     assert not warnings_record
     assert kwargs["stop"] == ["END"]
     assert kwargs["timeout"] == 4
+
+
+def test_anthropic_forwards_stop_sequences():
+    provider = object.__new__(AnthropicProvider)
+    provider.model = "claude-test"
+
+    kwargs = provider._build_kwargs(
+        [{"role": "user", "content": "hello"}],
+        AdvancedConfig(stop=["STOP"]),
+    )
+
+    assert kwargs["stop_sequences"] == ["STOP"]
+
+
+def test_unknown_output_type_fails_before_request():
+    provider = OptionsProvider(api_key="test")
+    with pytest.raises(ValueError, match="Unsupported output_type"):
+        provider.ask("hello", output_type="video")
 
 
 def test_azure_constructor_options_are_accepted_without_warning():
