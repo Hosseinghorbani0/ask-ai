@@ -12,13 +12,13 @@ def test_readmes_document_optional_provider_extras():
         assert f"askai-python[{extra}]" in pypi_readme
 
 
-def test_pypi_readme_matches_google_media_and_session_support():
+def test_pypi_readme_documents_current_provider_and_media_support():
     pypi_readme = Path("docs/PYPI_README.md").read_text(encoding="utf-8")
 
-    assert "| **Google** | `Google` | Text, Vision |" in pypi_readme
-    assert "Images, Video, Audio" not in pypi_readme
-    assert "## Conversation Sessions" in pypi_readme
-    assert "Memory buffer / session-based conversation management" not in pypi_readme
+    assert "| Google Gen AI | `Google` | `google` | `GOOGLE_API_KEY` | `gemini-2.0-flash` |" in pypi_readme
+    assert "vision input" in pypi_readme
+    assert "## Async, media, sessions, and lifecycle" in pypi_readme
+    assert "MediaPolicy" in pypi_readme
 
 
 def test_publish_workflow_is_gated_on_published_releases_and_tests():
