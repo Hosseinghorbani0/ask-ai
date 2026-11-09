@@ -23,6 +23,11 @@ class ProviderError(AskAIError):
     pass
 
 
+def safe_provider_error_label(provider: str, error: Exception) -> str:
+    """Describe a failed provider attempt without exposing exception content."""
+    return f"{provider}: {type(error).__name__}"
+
+
 class ProviderAuthError(ProviderError):
     """Raised when provider authentication fails."""
     pass
@@ -99,14 +104,14 @@ def map_provider_exception(error: Exception, provider: str, operation: str = "re
         marker in error_name or marker in error_text
         for marker in ("authentication", "autherror", "invalid api key", "unauthorized", "forbidden")
     ):
-        return ProviderAuthError(f"{prefix}: {error}")
+        return ProviderAuthError(f"{prefix}: {type(error).__name__}")
     if status_code == 429 or any(
         marker in error_name or marker in error_text
         for marker in ("ratelimit", "rate_limit", "rate limit", "too many requests")
     ):
-        return ProviderRateLimitError(f"{prefix}: {error}")
+        return ProviderRateLimitError(f"{prefix}: {type(error).__name__}")
     if any(marker in error_name or marker in error_text for marker in ("timeout", "timed out")):
-        return ProviderTimeoutError(f"{prefix}: {error}")
+        return ProviderTimeoutError(f"{prefix}: {type(error).__name__}")
     if any(
         marker in error_name or marker in error_text
         for marker in (
@@ -117,12 +122,12 @@ def map_provider_exception(error: Exception, provider: str, operation: str = "re
             "connection error",
         )
     ):
-        return ProviderConnectionError(f"{prefix}: {error}")
+        return ProviderConnectionError(f"{prefix}: {type(error).__name__}")
     if isinstance(status_code, int) and status_code >= 500:
-        return ProviderUnavailableError(f"{prefix}: {error}")
+        return ProviderUnavailableError(f"{prefix}: {type(error).__name__}")
     if status_code in (400, 404, 422) or any(
         marker in error_name or marker in error_text
         for marker in ("badrequest", "invalid request", "validationerror", "unprocessable")
     ):
-        return ProviderInvalidRequestError(f"{prefix}: {error}")
-    return ProviderError(f"{prefix}: {error}")
+        return ProviderInvalidRequestError(f"{prefix}: {type(error).__name__}")
+    return ProviderError(f"{prefix}: {type(error).__name__}")
