@@ -62,6 +62,5 @@ def parse_json(text: str) -> Union[dict[str, Any], list[Any]]:
 
     from .exceptions import AskAIParsingError
     raise AskAIParsingError(
-        f"Failed to parse JSON from response.\n"
-        f"Content snippet: {text[:200]}..."
+        f"Failed to parse JSON from response ({len(text)} characters)."
     )
